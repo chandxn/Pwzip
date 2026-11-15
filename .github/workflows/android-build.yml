@@ -44,6 +44,7 @@ jobs:
           node --experimental-sqlite --check backend/src/server.js
           node scripts/check-js.mjs
           node scripts/test-caption-pipeline.mjs
+          node scripts/test-tutor-ui.mjs
       - name: Android build and unit tests
         run: gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest
       - name: Upload debug APK

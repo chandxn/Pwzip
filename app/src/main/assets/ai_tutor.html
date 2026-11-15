@@ -103,6 +103,7 @@ input, textarea {
       <button class="btn-primary" onclick="authenticate('login')">Sign in</button>
       <button onclick="authenticate('register')">Create account</button>
     </div>
+    <button onclick="signOutTutor()" style="margin-top:6px">Sign out</button>
     <div id="authStatus" class="content-box" style="margin:8px 0">Sign in to your tutor server.</div>
     <div id="mediaAvailability" class="content-box">Waiting for an authorized transcript or captions interface from the active player.</div>
     <select id="lectureSelect" onchange="loadLecture()" style="width:100%;margin-top:8px;background:#070B14;color:white;padding:10px;border:1px solid var(--border);border-radius:8px"><option value="">Choose a lecture</option></select>
@@ -113,11 +114,13 @@ input, textarea {
     </div>
     <div id="studyGuide" class="content-box" style="margin-top:8px">Your lecture summary, timestamped transcript, and chapters will appear here.</div>
     <div id="voiceStatus" class="content-box">Voice tutoring is off.</div>
+    <div id="followupQuestions" class="content-box" style="margin-top:8px;display:none"></div>
     <div style="display:flex;gap:8px;margin-top:6px"><button id="voicePauseButton" onclick="toggleVoicePause()" style="display:none">Pause microphone</button><button id="voiceRetryButton" onclick="retryVoiceTutor()" style="display:none">Retry voice connection</button></div>
     <audio id="voiceAudio" autoplay></audio>
     <div id="chatHistory" class="content-box" style="max-height:240px;overflow:auto">Ask grounded questions about the selected lecture.</div>
     <textarea id="chatQuestion" placeholder="Ask about this lecture…" rows="2"></textarea>
     <button class="btn-primary" style="width:100%;margin-top:6px" onclick="sendTutorQuestion()">Ask tutor</button>
+    <button style="width:100%;margin-top:6px" onclick="suggestTutorFollowups()">Suggest follow-up questions</button>
   </section>
 
   <!-- Waiting Card when no active lesson is open in PW Portal -->
@@ -184,7 +187,7 @@ input, textarea {
     <div class="tab-bar">
       <button class="tab-btn active" id="modeBtn_SUMMARY" onclick="generateStudyView('SUMMARY')">1. Lesson Summary</button>
       <button class="tab-btn" id="modeBtn_KEY_CONCEPTS" onclick="generateStudyView('KEY_CONCEPTS')">2. Key Concepts</button>
-      <button class="tab-btn" id="modeBtn_FLASHCARDS" onclick="generateStudyView('FLASHCARDS')">3. Active Flashcards</button>
+      <button class="tab-btn" id="modeBtn_FLASHCARDS" onclick="generateStudyView('FLASHCARDS')">3. Flashcards</button>
       <button class="tab-btn" id="modeBtn_QUIZ" onclick="generateStudyView('QUIZ')">4. Practice Quiz</button>
     </div>
 
@@ -216,19 +219,23 @@ input, textarea {
 const $ = id => document.getElementById(id);
 const NOT_EXPOSED = "Not exposed by provider";
 const STORAGE_KEY_CANONICAL_LESSON = "pw_pm_canonical_active_lesson_v21";
-let tutorToken = localStorage.getItem("pw_tutor_token") || "";
+let tutorToken = "";
 let selectedLectureId = localStorage.getItem("pw_tutor_lecture") || "";
 let voicePeer = null;
 let voiceChannel = null;
 let voiceMicStream = null;
 let voicePaused = false;
 let voiceLectureId = "";
-const apiBase = () => ($("apiBase").value || "").trim().replace(/\/$/, "");
+const apiBase = () => {const value=$("apiBase").value.trim();try{const u=new URL(value);if(u.protocol!=="https:"||u.username||u.password||u.search||u.hash)return "";return value.replace(/\/$/,"");}catch(_){return "";}};
+function restoreTutorToken(){const nativeVault=window.NativeTutorSession;const legacy=localStorage.getItem("pw_tutor_token")||"";if(nativeVault){const legacyBase=localStorage.getItem("pw_tutor_auth_base")||localStorage.getItem("pw_tutor_api_base")||"";if(legacy&&apiBase()&&legacyBase===apiBase())nativeVault.putToken(apiBase(),legacy);localStorage.removeItem("pw_tutor_token");return apiBase()?nativeVault.getToken(apiBase()):"";}return legacy;}
+function persistTutorToken(token,server){if(window.NativeTutorSession){if(!window.NativeTutorSession.putToken(server,token))throw new Error("Could not securely save the sign-in session on this device.");localStorage.removeItem("pw_tutor_token");}else localStorage.setItem("pw_tutor_token",token);}
+function clearTutorToken(){if(window.NativeTutorSession)window.NativeTutorSession.clearToken();localStorage.removeItem("pw_tutor_token");localStorage.removeItem("pw_tutor_auth_base");}
 function apiHeaders(json=true) { const h={}; if(tutorToken)h.Authorization="Bearer "+tutorToken; if(json)h["Content-Type"]="application/json"; return h; }
-async function authenticate(mode) { try { const base=apiBase(); if(!/^https:\/\//i.test(base)) throw new Error("Enter the HTTPS address of your tutor server."); const response=await fetch(base+"/api/auth/"+mode,{method:"POST",headers:apiHeaders(),body:JSON.stringify({email:$('authEmail').value,password:$('authPassword').value})}); const data=await response.json();if(!response.ok)throw new Error(data.error||"Sign in failed.");tutorToken=data.token;localStorage.setItem("pw_tutor_token",tutorToken);$('authStatus').textContent="Signed in. Loading your lecture library…";await refreshLectures();retryCaptionSync();}catch(e){$('authStatus').textContent=e.message;} }
+async function authenticate(mode) { try { const base=apiBase(); if(!/^https:\/\//i.test(base)) throw new Error("Enter the HTTPS address of your tutor server."); localStorage.setItem("pw_tutor_api_base",base); const email=$('authEmail').value.trim().toLowerCase();const response=await fetch(base+"/api/auth/"+mode,{method:"POST",headers:apiHeaders(),body:JSON.stringify({email,password:$('authPassword').value})}); const data=await response.json();if(!response.ok)throw new Error(data.error||"Sign in failed.");persistTutorToken(data.token,base);tutorToken=data.token;localStorage.setItem("pw_tutor_auth_base",base);localStorage.setItem("pw_tutor_email",data.user?.email||email);$('authEmail').value=data.user?.email||email;$('authPassword').value="";$('authStatus').textContent="Signed in. Loading your lecture library…";await refreshLectures();retryCaptionSync();}catch(e){$('authStatus').textContent=e.message;} }
+function signOutTutor(){endVoiceTutor();tutorToken="";selectedLectureId="";clearTutorToken();localStorage.removeItem("pw_tutor_email");localStorage.removeItem("pw_tutor_lecture");$('authEmail').value="";$('authPassword').value="";$('lectureSelect').innerHTML='<option value="">Choose a lecture</option>';$('chatHistory').textContent='Sign in to load your conversation history.';$('authStatus').textContent='Signed out. Unsent captions remain in the local retry queue.';captionQueueStatus('Sign in to sync queued visible captions.');}
 async function refreshLectures(){const r=await fetch(apiBase()+"/api/lectures",{headers:apiHeaders(false)});const list=await r.json();if(!r.ok)throw new Error(list.error||"Could not load lectures.");const s=$('lectureSelect');s.innerHTML='<option value="">Choose a lecture</option>'+list.map(l=>`<option value="${escapeAttr(l.id)}">${escapeHtml(l.title)}</option>`).join('');if(list.some(l=>l.id===selectedLectureId))s.value=selectedLectureId;else selectedLectureId="";$('authStatus').textContent=`Signed in · ${list.length} lecture${list.length===1?'':'s'} available.`;if(selectedLectureId)await loadLecture();}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));} function escapeAttr(s){return escapeHtml(s);}
-function renderTranscript(l){const all=l.segments||[];const visible=all.slice(-300);const body=visible.map(s=>`[${fmtTime(s.start)}] ${s.text}`).join('\n')||l.transcript||'';const count=all.length||visible.length;$('studyGuide').textContent=body?`Visible-caption transcript · ${l.title}\nCoverage is partial. Showing ${visible.length} of ${count} captured cues; only played sections with official captions are included.\n\n${body}`:'No visible caption text has been saved yet.';}
+function renderTranscript(l){const all=l.segments||[];const visible=all.slice(-300);const body=visible.map(s=>`[${fmtTime(s.start)}] ${s.text}`).join('\n')||l.transcript||'';const count=l.segmentCount||all.length||visible.length;$('studyGuide').textContent=body?`Visible-caption transcript · ${l.title}\nCoverage is partial. Showing the latest ${visible.length} of ${count} captured cues; only played sections with official captions are included. Search can find any saved cue.\n\n${body}`:'No visible caption text has been saved yet.';}
 async function searchLectureCaptions(){try{if(!selectedLectureId)throw new Error('Select a saved lecture first.');const query=$('captionSearch').value.trim();if(!query)return;const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/search?q='+encodeURIComponent(query),{headers:apiHeaders(false)});const d=await r.json();if(!r.ok)throw new Error(d.error||'Caption search failed.');$('studyGuide').textContent=d.snippets?`Search results · ${d.included} relevant cues from ${d.total} captured cues (partial coverage)\n\n${d.snippets}`:'No matching cue found in the visible captions captured so far.';}catch(e){$('authStatus').textContent=e.message;}}
 function renderStudyGuide(g){if(!g||!g.summary)return;const blocks=[`Summary\n${g.summary}`,`Chapters\n${(g.chapters||[]).map(c=>`[${fmtTime(c.start_seconds)}] ${c.title}\n${c.summary}`).join('\n\n')||'No grounded chapter starts found.'}`];for(const [key,label] of [['concepts','Concepts'],['definitions','Definitions'],['formulas','Formulas']]){const rows=g[key]||[];if(rows.length)blocks.push(`${label}\n${rows.map(x=>`[${fmtTime(x.timestamp)}] ${x.name||x.term||x.formula}: ${x.explanation||x.definition||''}`).join('\n\n')}`);}if(g.revision_notes?.length)blocks.push(`Revision notes\n${g.revision_notes.map(x=>'• '+x).join('\n')}`);if(g.practice_questions?.length)blocks.push(`Practice questions\n${g.practice_questions.map(x=>`[${fmtTime(x.timestamp)}] ${x.question}\nAnswer: ${x.answer}`).join('\n\n')}`);blocks.push('Coverage: partial visible captions · '+(g.coverage?.captured_cues||0)+' captured cues; '+(g.coverage?.guide_cues||0)+' used for this guide.');$('studyGuide').textContent=blocks.join('\n\n');}
 async function loadLecture(){selectedLectureId=$('lectureSelect').value;if(!selectedLectureId)return;localStorage.setItem('pw_tutor_lecture',selectedLectureId);try{const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId),{headers:apiHeaders(false)});const l=await r.json();if(!r.ok)throw new Error(l.error);renderTranscript(l);renderStudyGuide(l.studyGuide);const h=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/history',{headers:apiHeaders(false)});const messages=await h.json();$('chatHistory').innerHTML=messages.map(m=>`<b>${m.role==='user'?'You':'Tutor'}:</b> ${escapeHtml(m.content)}`).join('<br><br>')||'Ask grounded questions about this lecture.';}catch(e){$('authStatus').textContent=e.message;}}
@@ -445,20 +452,19 @@ async function syncVisibleCaptions(state) {
 }
 function retryCaptionSync() { if(aiLessonState?.captionSegments?.length){lastCaptionSyncKey="";syncVisibleCaptions(aiLessonState);} }
 
-function buildLessonBoundContent(mode) {
-  if (!aiLessonState || !aiLessonState.hasActiveLesson) return "Waiting for a resolved active lesson.";
-  const count = aiLessonState.captionSegments ? aiLessonState.captionSegments.length : 0;
-  return "Portal lesson detected: " + aiLessonState.lessonTitle + ". Captions captured while visibly shown: " + count + ". Coverage includes only played sections with official captions enabled. Visual/audio analysis and unplayed sections are unavailable.";
+function renderStudyMode(guide, mode) {
+  const box=$("studyOutputBox"),coverage=`Partial coverage: ${guide.coverage?.guide_cues||0} of ${guide.coverage?.captured_cues||0} saved caption cues used.`;
+  if(mode==="SUMMARY"){box.textContent=(guide.summary||"No summary was returned.")+"\n\n"+(guide.chapters||[]).map(c=>`[${fmtTime(c.start_seconds)}] ${c.title}\n${c.summary}`).join("\n\n")+"\n\n"+coverage;return;}
+  if(mode==="KEY_CONCEPTS"){const rows=[...(guide.concepts||[]).map(x=>`[${fmtTime(x.timestamp)}] ${x.name}: ${x.explanation}`),...(guide.definitions||[]).map(x=>`[${fmtTime(x.timestamp)}] ${x.term}: ${x.definition}`),...(guide.formulas||[]).map(x=>`[${fmtTime(x.timestamp)}] ${x.formula}: ${x.explanation}`),...(guide.revision_notes||[])];box.textContent=(rows.join("\n\n")||"No concepts, definitions, or formulas were supported by the captured cues.")+"\n\n"+coverage;return;}
+  if(mode==="FLASHCARDS"){const cards=[...(guide.concepts||[]).map(x=>({front:x.name,back:x.explanation,time:x.timestamp})),...(guide.definitions||[]).map(x=>({front:x.term,back:x.definition,time:x.timestamp})),...(guide.formulas||[]).map(x=>({front:x.formula,back:x.explanation,time:x.timestamp}))];box.innerHTML=cards.length?cards.map((c,i)=>`<details><summary>Card ${i+1} · ${escapeHtml(c.front)} · ${fmtTime(c.time)}</summary><p>${escapeHtml(c.back)}</p></details>`).join("")+`<p>${escapeHtml(coverage)}</p>`:"No flashcards could be grounded in the saved captions.";return;}
+  const questions=guide.practice_questions||[];box.innerHTML=questions.length?questions.map((q,i)=>`<details><summary>Question ${i+1}: ${escapeHtml(q.question)} · ${fmtTime(q.timestamp)}</summary><p>${escapeHtml(q.answer)}</p></details>`).join("")+`<p>${escapeHtml(coverage)}</p>`:"No quiz questions could be grounded in the saved captions.";
 }
-
-function generateStudyView(mode) {
-  activeStudyMode = mode || "SUMMARY";
-  ["SUMMARY", "KEY_CONCEPTS", "FLASHCARDS", "QUIZ"].forEach(m => {
-    const btn = $("modeBtn_" + m);
-    if (btn) btn.className = (m === activeStudyMode) ? "tab-btn active" : "tab-btn";
-  });
-  $("studyOutputBox").textContent = buildLessonBoundContent(activeStudyMode);
+async function generateStudyView(mode) {
+  activeStudyMode=mode||"SUMMARY";["SUMMARY","KEY_CONCEPTS","FLASHCARDS","QUIZ"].forEach(m=>{const btn=$("modeBtn_"+m);if(btn)btn.className=m===activeStudyMode?"tab-btn active":"tab-btn";});
+  if(!selectedLectureId){$("studyOutputBox").textContent="Sign in and play the active lesson with official captions visible to save lecture context.";return;}
+  try{$("studyOutputBox").textContent="Preparing this study view from saved caption context…";let response=await fetch(apiBase()+"/api/lectures/"+encodeURIComponent(selectedLectureId),{headers:apiHeaders(false)}),lecture=await response.json();if(!response.ok)throw new Error(lecture.error||"Could not load lecture.");let guide=lecture.studyGuide;if(!guide?.summary){response=await fetch(apiBase()+"/api/lectures/"+encodeURIComponent(selectedLectureId)+"/study-guide",{method:"POST",headers:apiHeaders(),body:"{}"});guide=await response.json();if(!response.ok)throw new Error(guide.error||"Could not prepare study guide.");}renderStudyMode(guide,activeStudyMode);}catch(e){$("studyOutputBox").textContent=e.message;}
 }
+async function suggestTutorFollowups(){const box=$("followupQuestions");try{if(!selectedLectureId)throw new Error("Select a saved lecture first.");box.style.display="block";box.textContent="Finding useful next questions…";const response=await fetch(apiBase()+"/api/lectures/"+encodeURIComponent(selectedLectureId)+"/followups",{method:"POST",headers:apiHeaders(),body:"{}"}),data=await response.json();if(!response.ok)throw new Error(data.error||"Could not suggest follow-up questions.");box.textContent="Follow-up questions based on the saved conversation and partial captions:";for(const question of data.questions||[]){const button=document.createElement("button");button.textContent=question;button.style.display="block";button.style.width="100%";button.style.marginTop="6px";button.addEventListener("click",()=>{$("chatQuestion").value=question;sendTutorQuestion();});box.appendChild(button);}if(!data.questions?.length)box.textContent="No follow-up questions could be grounded in the saved lecture context.";}catch(e){box.style.display="block";box.textContent=e.message;}}
 
 function answerLearnerQuestion() {
   if (selectedLectureId) { $("chatQuestion").value = $("learnerQuestionInput").value; sendTutorQuestion(); return; }
@@ -542,6 +548,7 @@ function applySessionState(rawInput) {
   }
 
   const lessonChanged = !aiLessonState ||
+                        aiLessonState.courseId !== incoming.courseId ||
                         aiLessonState.lessonId !== incoming.lessonId ||
                         aiLessonState.lessonTitle !== incoming.lessonTitle;
 
@@ -590,7 +597,11 @@ window.__pwApplySessionState = window.receiveLessonSync = applySessionState;
 
 window.addEventListener("DOMContentLoaded", () => {
   $("apiBase").value = localStorage.getItem("pw_tutor_api_base") || "";
-  $("apiBase").addEventListener("change", () => { localStorage.setItem("pw_tutor_api_base", apiBase()); retryCaptionSync(); });
+  $("authEmail").value = localStorage.getItem("pw_tutor_email") || "";
+  tutorToken=restoreTutorToken();
+  if(tutorToken&&localStorage.getItem("pw_tutor_auth_base")!==apiBase()){tutorToken="";clearTutorToken();$("authStatus").textContent="Tutor server changed. Sign in again to protect your account.";}
+  $("apiBase").addEventListener("change", () => { const next=apiBase();if(tutorToken&&localStorage.getItem("pw_tutor_auth_base")!==next)signOutTutor();localStorage.setItem("pw_tutor_api_base",next);retryCaptionSync(); });
+  if(tutorToken&&apiBase())fetch(apiBase()+"/api/auth/me",{headers:apiHeaders(false)}).then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Sign-in expired.");localStorage.setItem("pw_tutor_email",data.user.email);$("authEmail").value=data.user.email;await refreshLectures();retryCaptionSync();}).catch(error=>{$("authStatus").textContent=error.message+" Please sign in again.";tutorToken="";clearTutorToken();});
   try {
     const cached = localStorage.getItem(STORAGE_KEY_CANONICAL_LESSON);
     if (cached) {

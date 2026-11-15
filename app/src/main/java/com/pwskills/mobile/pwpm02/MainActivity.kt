@@ -41,6 +41,7 @@ class MainActivity : Activity(), View.OnClickListener {
     private lateinit var providerAdapter: PwPortalProviderAdapter
     private lateinit var downloadBridge: NativeDownloadBridge
     private lateinit var offlinePlayer: PwOfflinePlayer
+    private lateinit var tutorSessionVault: TutorSessionVault
 
     private var canonicalLessonState: ActiveLessonState? = null
     private var latestSessionJson: String = ""
@@ -51,6 +52,7 @@ class MainActivity : Activity(), View.OnClickListener {
         repository = DownloadRepository.getInstance(this)
         providerAdapter = PwPortalProviderAdapter(this, repository)
         offlinePlayer = PwOfflinePlayer(this)
+        tutorSessionVault = TutorSessionVault(this)
 
         // Restore persisted canonical session if valid (ignoring legacy dashboard noise)
         val cachedJson = getSharedPreferences("pw_pm_v21_session", MODE_PRIVATE)
@@ -133,6 +135,7 @@ class MainActivity : Activity(), View.OnClickListener {
         val chrome = AlmaWebChromeClient(this)
         webView.webChromeClient = chrome
         if (webView === aiTutorWebView) tutorChromeClient = chrome
+        if (webView === aiTutorWebView) webView.addJavascriptInterface(tutorSessionVault, "NativeTutorSession")
 
         if (attachDownloadBridge) {
             downloadBridge = NativeDownloadBridge(
