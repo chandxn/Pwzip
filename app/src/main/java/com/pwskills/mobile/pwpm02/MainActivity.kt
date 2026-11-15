@@ -198,8 +198,9 @@ class MainActivity : Activity(), View.OnClickListener {
 
     fun injectPortalSyncBridge(targetView: WebView = portalWebView) {
         val script = cachedPortalSyncJs ?: try {
-            assets.open("portal_sync_bridge.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
-                .also { cachedPortalSyncJs = it }
+            val captionPipeline = assets.open("caption_pipeline.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val portalBridge = assets.open("portal_sync_bridge.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
+            (captionPipeline + "\n" + portalBridge).also { cachedPortalSyncJs = it }
         } catch (_: Exception) {
             return
         }

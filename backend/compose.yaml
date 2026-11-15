@@ -1,0 +1,25 @@
+services:
+  ai-tutor-api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${TUTOR_PORT:-8787}:8787"
+    environment:
+      PORT: 8787
+      DATABASE_PATH: /app/data/tutor.sqlite
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random secret of at least 32 characters}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in the host environment}
+      OPENAI_TEXT_MODEL: ${OPENAI_TEXT_MODEL:-gpt-4o-mini}
+      OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-gpt-realtime-2.1}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+    volumes:
+      - tutor-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  tutor-data:

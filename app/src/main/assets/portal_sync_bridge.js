@@ -19,6 +19,7 @@
       moduleId: "",
       moduleName: "",
       lessonId: "",
+      lessonIdentityKey: "",
       lessonTitle: "",
       lastPosition: -1,
       lastDuration: 0,
@@ -35,12 +36,19 @@
       trackedContext.moduleId = "";
       trackedContext.moduleName = "";
       trackedContext.lessonId = "";
+      trackedContext.lessonIdentityKey = "";
       trackedContext.lessonTitle = "";
       trackedContext.lastPosition = -1;
       trackedContext.lastDuration = 0;
       trackedContext.lastPlaybackState = "PAUSED";
       trackedContext.captionSegments = [];
       trackedContext.captionKeys = Object.create(null);
+    }
+
+    function lessonIdentityKey(courseId, lessonId) {
+      return window.PwCaptionPipeline
+        ? window.PwCaptionPipeline.lessonKey(courseId, lessonId)
+        : String(courseId || "") + "|" + String(lessonId || "");
     }
 
     var PROGRESS_TEXT_REGEX = /^(\d+%(\s*(complete|completed|watched|done))?|\d+\s*(\/|of)\s*\d+(\s*(lessons?|lectures?|modules?|videos?|chapters?|completed|done))?|\d{1,2}:\d{2}(:\d{2})?(\s*\/\s*\d{1,2}:\d{2}(:\d{2})?)?)$/i;
@@ -416,7 +424,8 @@
       var lessonChanged = Boolean(
         (trackedContext.lastHref && currentHref !== trackedContext.lastHref) ||
         (trackedContext.lessonTitle && meta.lessonTitle !== trackedContext.lessonTitle) ||
-        (trackedContext.lessonId && meta.lessonId !== trackedContext.lessonId)
+        (trackedContext.lessonId && meta.lessonId !== trackedContext.lessonId) ||
+        (trackedContext.lessonIdentityKey && meta.lessonId && lessonIdentityKey(meta.courseId, meta.lessonId) !== trackedContext.lessonIdentityKey)
       );
       if (lessonChanged) {
         resetTrackedLessonContext();
@@ -455,6 +464,7 @@
         trackedContext.captionKeys = Object.create(null);
       }
       trackedContext.lessonId = meta.lessonId;
+      trackedContext.lessonIdentityKey = lessonIdentityKey(meta.courseId, meta.lessonId);
       trackedContext.lessonTitle = meta.lessonTitle;
       trackedContext.courseId = meta.courseId;
       trackedContext.courseName = meta.courseName;
@@ -483,20 +493,14 @@
 
       // Read only cues from a caption/subtitle track already set to "showing" by the player/user.
       // Never enable tracks or fetch caption/media URLs; this captures only played, visible cues.
-      if (v && v.textTracks) {
-        for (var ti = 0; ti < v.textTracks.length; ti++) {
-          var track = v.textTracks[ti];
-          if (!track || (track.kind !== "captions" && track.kind !== "subtitles") || track.mode !== "showing" || !track.activeCues) continue;
-          for (var ci = 0; ci < track.activeCues.length; ci++) {
-            var cue = track.activeCues[ci];
-            var cueText = String(cue && cue.text || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 2000);
-            var start = Math.max(0, Number(cue && cue.startTime) || 0);
-            var end = Math.max(start, Number(cue && cue.endTime) || start);
-            var key = Math.round(start * 10) + "|" + Math.round(end * 10) + "|" + cueText;
-            if (!cueText || trackedContext.captionKeys[key]) continue;
-            trackedContext.captionKeys[key] = true;
-            if (trackedContext.captionSegments.length < 10000) trackedContext.captionSegments.push({ start: start, end: end, text: cueText });
-          }
+      if (v && window.PwCaptionPipeline) {
+        var visibleCues = window.PwCaptionPipeline.readVisibleCues(v);
+        for (var ci = 0; ci < visibleCues.length; ci++) {
+          var cue = visibleCues[ci];
+          var key = window.PwCaptionPipeline.cueKey(cue);
+          if (trackedContext.captionKeys[key]) continue;
+          trackedContext.captionKeys[key] = true;
+          trackedContext.captionSegments.push(cue);
         }
       }
       var mediaInfo = classifyActiveMedia(v, meta);

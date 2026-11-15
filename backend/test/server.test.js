@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-test('server module exposes app and health route', async () => {
+test('server module exposes app and health route', async (t) => {
   process.env.NODE_ENV = 'test';
   process.env.JWT_SECRET = 'test-secret-with-more-than-32-characters';
   process.env.DATABASE_PATH = ':memory:';
-  const { app } = await import('../src/server.js');
+  delete process.env.OPENAI_API_KEY;
+  const { app, selectRelevantCaptions, evenlySampleCaptions } = await import('../src/server.js');
   const server = app.listen(0);
   await new Promise(resolve => server.once('listening', resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
   const { port } = server.address();
   const response = await fetch(`http://127.0.0.1:${port}/health`);
   assert.equal(response.status, 200);
@@ -15,13 +17,50 @@ test('server module exposes app and health route', async () => {
   const register=await fetch(`http://127.0.0.1:${port}/api/auth/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'learner@example.com',password:'a-long-test-password'})});
   assert.equal(register.status,201);
   const {token}=await register.json();
-  const captions=await fetch(`http://127.0.0.1:${port}/api/lessons/captions`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({lessonId:'lesson_987',title:'Caption lesson',source:'visible-html5-text-track',segments:[{start:12,end:15,text:'Visible authorized caption.'}]})});
+  const captionUrl=`http://127.0.0.1:${port}/api/lessons/captions`;
+  const captionHeaders={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};
+  const captions=await fetch(captionUrl,{method:'POST',headers:captionHeaders,body:JSON.stringify({courseId:'course_alpha',lessonId:'lesson_987',title:'Caption lesson',source:'visible-html5-text-track',segments:[{start:12,end:15,text:'Visible authorized caption.'}]})});
   assert.equal(captions.status,200);
   const captured=await captions.json();
   assert.equal(captured.captured,1);
-  assert.match(captured.transcript,/\[0:12\] Visible authorized caption\./);
-  const rejected=await fetch(`http://127.0.0.1:${port}/api/lessons/captions`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({lessonId:'lesson_987',title:'Caption lesson',source:'downloaded-media',segments:[{start:18,text:'Not allowed'}]})});
+  const firstLectureId=captured.id;
+  const repeated=await fetch(captionUrl,{method:'POST',headers:captionHeaders,body:JSON.stringify({courseId:'course_alpha',lessonId:'lesson_987',title:'Caption lesson',source:'visible-html5-text-track',segments:[{start:12,end:15,text:'Visible authorized caption.'},{start:18,end:20,text:'Second caption.'}]})});
+  const repeatedBody=await repeated.json();
+  assert.equal(repeatedBody.id,firstLectureId);
+  assert.equal(repeatedBody.captured,2,'retries must be idempotent while new cues are appended');
+  const largeBatches=[];
+  for(let i=0;i<10020;i++)largeBatches.push({start:30+i,end:31+i,text:`Long lecture cue ${i}.`});
+  for(let offset=0;offset<largeBatches.length;offset+=100){
+    const batchResponse=await fetch(captionUrl,{method:'POST',headers:captionHeaders,body:JSON.stringify({courseId:'course_alpha',lessonId:'lesson_987',title:'Caption lesson',source:'visible-html5-text-track',segments:largeBatches.slice(offset,offset+100)})});
+    assert.equal(batchResponse.status,200);
+    var longLecture=await batchResponse.json();
+  }
+  assert.equal(longLecture.captured,10022,'older caption cues must remain stored beyond the previous 10,000 cue cap');
+  const otherCourse=await fetch(captionUrl,{method:'POST',headers:captionHeaders,body:JSON.stringify({courseId:'course_beta',lessonId:'lesson_987',title:'Other course lesson',source:'visible-html5-text-track',segments:[{start:12,end:13,text:'Different course.'}]})});
+  assert.notEqual((await otherCourse.json()).id,firstLectureId,'same provider lesson id in another course must not share context');
+  const invalidCue=await fetch(captionUrl,{method:'POST',headers:captionHeaders,body:JSON.stringify({courseId:'course_alpha',lessonId:'lesson_987',title:'Caption lesson',source:'visible-html5-text-track',segments:[{start:20,end:10,text:'Invalid timestamps'}]})});
+  assert.equal(invalidCue.status,400);
+  const rejected=await fetch(captionUrl,{method:'POST',headers:captionHeaders,body:JSON.stringify({courseId:'course_alpha',lessonId:'lesson_987',title:'Caption lesson',source:'downloaded-media',segments:[{start:18,end:19,text:'Not allowed'}]})});
   assert.equal(rejected.status,400);
+  const learnerLecture=await fetch(`http://127.0.0.1:${port}/api/lectures/${firstLectureId}`,{headers:{Authorization:`Bearer ${token}`}});
+  const storedLecture=await learnerLecture.json();
+  assert.equal(storedLecture.segments.length,10022);
+  assert.deepEqual(storedLecture.segments.map(x=>x.start),[...storedLecture.segments.map(x=>x.start)].sort((a,b)=>a-b));
+  const retrieved=selectRelevantCaptions(storedLecture,'Long lecture cue 10019',3000);
+  assert.match(retrieved.text,/\[167:29\] Long lecture cue 10019\./,'retrieval must search late lecture cues, not just the beginning');
+  assert.ok(retrieved.includedSegments<retrieved.totalSegments,'retrieval reports when it selected only a subset');
+  const search=await fetch(`http://127.0.0.1:${port}/api/lectures/${firstLectureId}/search?q=${encodeURIComponent('Long lecture cue 10019')}`,{headers:captionHeaders});
+  assert.equal(search.status,200);
+  assert.match((await search.json()).snippets,/\[167:29\] Long lecture cue 10019\./);
+  const sampled=evenlySampleCaptions(storedLecture,5000);
+  assert.ok(sampled.partial);
+  assert.match(sampled.text,/\[167:29\] Long lecture cue 10019\./,'summary sampling must include late lecture material');
+  const studyUnavailable=await fetch(`http://127.0.0.1:${port}/api/lectures/${firstLectureId}/study-guide`,{method:'POST',headers:captionHeaders,body:'{}'});
+  assert.equal(studyUnavailable.status,503,'study guide must fail clearly when the server key is not configured');
+  const chatUnavailable=await fetch(`http://127.0.0.1:${port}/api/lectures/${firstLectureId}/chat`,{method:'POST',headers:captionHeaders,body:JSON.stringify({question:'Long lecture cue 10019'})});
+  assert.equal(chatUnavailable.status,503,'grounded chat must not pretend to work without a server key');
+  const voiceUnavailable=await fetch(`http://127.0.0.1:${port}/api/realtime/session`,{method:'POST',headers:captionHeaders,body:JSON.stringify({lectureId:firstLectureId})});
+  assert.equal(voiceUnavailable.status,503,'Realtime credentials must be issued only by a configured backend');
   const created=await fetch(`http://127.0.0.1:${port}/api/lectures/transcript`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({title:'Test lecture',transcript:'An authorized transcript for testing the grounded tutor.'})});
   assert.equal(created.status,201);
   const lecture=await created.json();
@@ -34,5 +73,6 @@ test('server module exposes app and health route', async () => {
   const otherToken=(await second.json()).token;
   const crossAccount=await fetch(`http://127.0.0.1:${port}/api/lectures/${lecture.id}`,{headers:{Authorization:`Bearer ${otherToken}`}});
   assert.equal(crossAccount.status,404);
-  await new Promise(resolve => server.close(resolve));
+  const privateSearch=await fetch(`http://127.0.0.1:${port}/api/lectures/${firstLectureId}/search?q=caption`,{headers:{Authorization:`Bearer ${otherToken}`}});
+  assert.equal(privateSearch.status,404,'caption search must remain learner-scoped');
 });
