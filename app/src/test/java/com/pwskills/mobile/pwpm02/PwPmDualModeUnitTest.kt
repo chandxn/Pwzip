@@ -94,4 +94,13 @@ class PwPmDualModeUnitTest {
         assertFalse(DownloadWorker.isSafeFileName("../etc/passwd"))
         assertFalse(DownloadWorker.isSafeFileName("manifest.m3u8"))
     }
+
+    @Test
+    fun testTransientHttpErrorsRetryButPermanentClientErrorsDoNot() {
+        assertTrue(DownloadWorker.isRetryableHttpStatus(408))
+        assertTrue(DownloadWorker.isRetryableHttpStatus(429))
+        assertTrue(DownloadWorker.isRetryableHttpStatus(503))
+        assertFalse(DownloadWorker.isRetryableHttpStatus(404))
+        assertFalse(DownloadWorker.isRetryableHttpStatus(401))
+    }
 }

@@ -1,7 +1,13 @@
 package com.pwskills.mobile.pwpm02
 
 import android.content.Context
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
+import android.content.pm.ServiceInfo
 import android.media.MediaMetadataRetriever
+import androidx.core.app.NotificationCompat
+import androidx.work.ForegroundInfo
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +17,7 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
+import java.io.IOException
 
 /**
  * File 3: DownloadWorker.kt
@@ -45,6 +52,7 @@ class DownloadWorker(
         var connection: HttpURLConnection? = null
 
         try {
+            setForeground(downloadForegroundInfo(requestId, rawFileName))
             val existingItem = database.findById(requestId)
             val resumeBytes = if (tempFile.exists()) tempFile.length() else 0L
 
@@ -56,33 +64,9 @@ class DownloadWorker(
                 errorMessage = null
             )
 
-            // Support bundled local verification asset (`file:///android_asset/dev_...`) or HTTPS stream
-            if (sourceUrl.startsWith("file:///android_asset/")) {
-                val assetName = sourceUrl.removePrefix("file:///android_asset/")
-                applicationContext.assets.open(assetName).use { input ->
-                    FileOutputStream(tempFile, false).use { output ->
-                        val buffer = ByteArray(16 * 1024)
-                        var copied = 0L
-                        val availableTotal = input.available().toLong().coerceAtLeast(1L)
-                        while (true) {
-                            if (isStopped) {
-                                return@withContext Result.retry()
-                            }
-                            val read = input.read(buffer)
-                            if (read == -1) break
-                            output.write(buffer, 0, read)
-                            copied += read
-                            updateState(
-                                requestId = requestId,
-                                status = DownloadStatus.DOWNLOADING,
-                                bytesDownloaded = copied,
-                                totalBytes = availableTotal,
-                                errorMessage = null
-                            )
-                        }
-                        output.flush()
-                    }
-                }
+            if (!sourceUrl.startsWith("https://", ignoreCase = true)) {
+                markUnsupported(requestId, "Only provider-authorized HTTPS files can be downloaded.")
+                return@withContext Result.failure()
             } else {
                 val url = URL(sourceUrl)
                 connection = (url.openConnection() as HttpURLConnection).apply {
@@ -100,9 +84,22 @@ class DownloadWorker(
                 val code = connection.responseCode
                 val isPartial = (code == HttpURLConnection.HTTP_PARTIAL)
                 if (code != HttpURLConnection.HTTP_OK && !isPartial) {
+                    if (isRetryableHttpStatus(code)) {
+                        updateState(requestId, DownloadStatus.QUEUED, tempFile.length(), database.findById(requestId)?.totalBytes ?: -1L,
+                            "Server temporarily unavailable (HTTP $code); retrying automatically.")
+                        return@withContext Result.retry()
+                    }
                     markFailed(requestId, "HTTP error $code from server")
                     if (tempFile.exists()) tempFile.delete()
                     return@withContext Result.failure()
+                }
+                if (isPartial) {
+                    val contentRange = connection.getHeaderField("Content-Range") ?: ""
+                    if (!contentRange.startsWith("bytes $resumeBytes-", ignoreCase = true)) {
+                        markFailed(requestId, "Server returned an invalid byte range; resume was stopped to protect file integrity.")
+                        tempFile.delete()
+                        return@withContext Result.failure()
+                    }
                 }
 
                 val contentType = (connection.contentType ?: "").lowercase()
@@ -202,14 +199,38 @@ class DownloadWorker(
             }
             Result.success()
         } catch (e: Exception) {
-            if (tempFile.exists() && !isStopped) {
-                tempFile.delete()
+            if (isStopped) return@withContext Result.retry()
+            if (e is IOException) {
+                updateState(requestId, DownloadStatus.QUEUED, tempFile.length(), database.findById(requestId)?.totalBytes ?: -1L,
+                    "Network interrupted; will resume automatically when connectivity returns.")
+                return@withContext Result.retry()
             }
+            if (tempFile.exists()) tempFile.delete()
             markFailed(requestId, "Download exception: ${e.message ?: e.javaClass.simpleName}")
             Result.failure()
         } finally {
             connection?.disconnect()
         }
+    }
+
+    private fun downloadForegroundInfo(requestId: String, fileName: String): ForegroundInfo {
+        val channelId = "pw_downloads"
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager.getNotificationChannel(channelId) == null) {
+            manager.createNotificationChannel(NotificationChannel(channelId, "Downloads", NotificationManager.IMPORTANCE_LOW))
+        }
+        val notification = NotificationCompat.Builder(applicationContext, channelId)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("Download in progress")
+            .setContentText(fileName)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setProgress(0, 0, true)
+            .build()
+        val notificationId = requestId.hashCode().let { if (it == 0) 1 else kotlin.math.abs(it) }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else ForegroundInfo(notificationId, notification)
     }
 
     private fun verifyDownloadedFile(file: File, fileName: String, mimeType: String): String? {
@@ -333,5 +354,8 @@ class DownloadWorker(
                     fileName.endsWith(".webm", ignoreCase = true) ||
                     fileName.endsWith(".pdf", ignoreCase = true)
         }
+
+        @JvmStatic
+        fun isRetryableHttpStatus(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
     }
 }

@@ -2,6 +2,8 @@ package com.pwskills.mobile.pwpm02
 
 import android.content.Context
 import android.os.Environment
+import android.content.Intent
+import android.net.Uri
 import android.webkit.JavascriptInterface
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -9,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.media3.exoplayer.offline.Download
 import java.io.File
 import java.util.UUID
 
@@ -60,9 +63,7 @@ class NativeDownloadBridge(
     ): String {
         val requestId = UUID.randomUUID().toString()
         // Phase 5: Validate provider authorization independently of HTTPS validation (prevent arbitrary URL downloads)
-        if (!url.startsWith("file:///android_asset/dev_") &&
-            !providerAdapter.isUrlAuthorizedForMode(url, DownloadMode.SHARED_EXPORT)
-        ) {
+        if (!providerAdapter.isUrlAuthorizedForMode(url, DownloadMode.SHARED_EXPORT)) {
             return JSONObject()
                 .put("ok", false)
                 .put("success", false)
@@ -100,7 +101,9 @@ class NativeDownloadBridge(
                 .toString()
         }
 
-        val accepted = (item.status == DownloadStatus.QUEUED || item.status == DownloadStatus.DOWNLOADING)
+        val accepted = item.status in setOf(
+            DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED, DownloadStatus.COMPLETED
+        )
         return JSONObject()
             .put("ok", accepted)
             .put("success", accepted)
@@ -231,42 +234,71 @@ class NativeDownloadBridge(
     @JavascriptInterface
     fun pauseDownload(requestId: String): String {
         val updated = repository.pauseDownload(requestId)
+        val offline = media3Engine.downloadManager.currentDownloads.firstOrNull { it.request.id == requestId }
+        if (!updated && offline != null) media3Engine.downloadManager.setStopReason(requestId, 1)
         return JSONObject()
-            .put("ok", updated)
+            .put("ok", updated || offline != null)
             .put("requestId", requestId)
-            .put("status", if (updated) DownloadStatus.PAUSED.name else "NOT_FOUND")
+            .put("status", if (updated || offline != null) DownloadStatus.PAUSED.name else "NOT_FOUND")
             .toString()
     }
 
     @JavascriptInterface
     fun resumeDownload(requestId: String): String {
         val updated = repository.resumeDownload(requestId)
+        val offline = media3Engine.downloadManager.currentDownloads.firstOrNull { it.request.id == requestId }
+        if (!updated && offline != null) media3Engine.downloadManager.setStopReason(requestId, Download.STOP_REASON_NONE)
         return JSONObject()
-            .put("ok", updated)
+            .put("ok", updated || offline != null)
             .put("requestId", requestId)
-            .put("status", if (updated) DownloadStatus.QUEUED.name else "NOT_FOUND")
+            .put("status", if (updated || offline != null) DownloadStatus.QUEUED.name else "NOT_FOUND")
             .toString()
     }
 
     @JavascriptInterface
     fun cancelDownload(requestId: String): String {
         val updated = repository.cancelDownload(requestId)
+        val offline = media3Engine.downloadManager.currentDownloads.firstOrNull { it.request.id == requestId }
+        if (!updated && offline != null) media3Engine.downloadManager.removeDownload(requestId)
         media3Engine.removeAppOfflineDownload(context, requestId)
         return JSONObject()
-            .put("ok", updated)
+            .put("ok", updated || offline != null)
             .put("requestId", requestId)
-            .put("status", if (updated) "CANCELLED" else "NOT_FOUND")
+            .put("status", if (updated || offline != null) "CANCELLED" else "NOT_FOUND")
             .toString()
     }
 
     @JavascriptInterface
     fun retryDownload(requestId: String): String {
         val updated = repository.retryDownload(requestId)
+        val offline = media3Engine.downloadManager.currentDownloads.firstOrNull { it.request.id == requestId }
+        if (!updated && offline != null) {
+            media3Engine.downloadManager.setStopReason(requestId, Download.STOP_REASON_NONE)
+            media3Engine.downloadManager.addDownload(offline.request)
+        }
         return JSONObject()
-            .put("ok", updated)
+            .put("ok", updated || offline != null)
             .put("requestId", requestId)
-            .put("status", if (updated) DownloadStatus.QUEUED.name else "NOT_FOUND")
+            .put("status", if (updated || offline != null) DownloadStatus.QUEUED.name else "NOT_FOUND")
             .toString()
+    }
+
+    @JavascriptInterface
+    fun openDownloadedFile(requestId: String): String {
+        val item = repository.getDownload(requestId)
+            ?: return JSONObject().put("ok", false).put("error", "Download not found").toString()
+        if (item.status != DownloadStatus.COMPLETED || item.destinationUri.isNullOrBlank()) {
+            return JSONObject().put("ok", false).put("error", "File is not fully downloaded and verified").toString()
+        }
+        return try {
+            val uri = Uri.parse(item.destinationUri)
+            val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, item.mimeType)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            JSONObject().put("ok", true).toString()
+        } catch (e: Exception) {
+            JSONObject().put("ok", false).put("error", e.message ?: "No app can open this file").toString()
+        }
     }
 
     @JavascriptInterface
@@ -276,9 +308,32 @@ class NativeDownloadBridge(
         for (item in items) {
             arr.put(item.toJson())
         }
+        for (download in media3Engine.downloadManager.currentDownloads) {
+            val state = when (download.state) {
+                Download.STATE_QUEUED, Download.STATE_RESTARTING -> "QUEUED"
+                Download.STATE_DOWNLOADING -> "DOWNLOADING"
+                Download.STATE_STOPPED -> "PAUSED"
+                Download.STATE_COMPLETED -> "COMPLETED"
+                Download.STATE_FAILED -> "FAILED"
+                else -> "QUEUED"
+            }
+            val progress = download.percentDownloaded.takeIf { it >= 0f }?.toInt() ?: 0
+            arr.put(JSONObject()
+                .put("requestId", download.request.id)
+                .put("sourceUrl", download.request.uri.toString())
+                .put("fileName", download.request.id)
+                .put("mimeType", download.request.mimeType ?: "application/octet-stream")
+                .put("status", state)
+                .put("bytesDownloaded", download.bytesDownloaded)
+                .put("totalBytes", -1)
+                .put("progress", progress)
+                .put("destinationUri", JSONObject.NULL)
+                .put("errorMessage", if (download.failureReason != Download.FAILURE_REASON_NONE) "Provider-authorized offline download failed." else JSONObject.NULL)
+                .put("downloadMode", DownloadMode.APP_OFFLINE.name))
+        }
         return JSONObject()
             .put("ok", true)
-            .put("count", items.size)
+            .put("count", arr.length())
             .put("downloads", arr)
             .toString()
     }

@@ -1,6 +1,7 @@
 package com.pwskills.mobile.pwpm02
 
 import android.content.Context
+import android.net.Uri
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.Data
@@ -45,13 +46,11 @@ class DownloadRepository private constructor(private val context: Context) {
         mimeType: String
     ): ValidationResult {
         val trimmedUrl = url.trim()
-        if (!trimmedUrl.startsWith("https://", ignoreCase = true) &&
-            !trimmedUrl.startsWith("file:///android_asset/dev_", ignoreCase = true)
-        ) {
+        if (!trimmedUrl.startsWith("https://", ignoreCase = true)) {
             return ValidationResult(
                 allowed = false,
                 status = DownloadStatus.UNSUPPORTED.name,
-                reason = "Only HTTPS URLs or bundled developer verification assets are permitted."
+                reason = "Only provider-authorized HTTPS URLs are supported."
             )
         }
 
@@ -126,7 +125,9 @@ class DownloadRepository private constructor(private val context: Context) {
         val existing = database.findBySourceUrl(url)
         if (existing != null && (existing.status == DownloadStatus.QUEUED ||
                     existing.status == DownloadStatus.DOWNLOADING ||
-                    existing.status == DownloadStatus.VERIFYING)
+                    existing.status == DownloadStatus.VERIFYING ||
+                    existing.status == DownloadStatus.PAUSED ||
+                    existing.status == DownloadStatus.COMPLETED)
         ) {
             return existing
         }
@@ -155,24 +156,9 @@ class DownloadRepository private constructor(private val context: Context) {
      * scheduleDownload(Context, String, String)
      */
     fun scheduleDownload(context: Context, url: String, fileName: String) {
-        val requestId = "req_${System.currentTimeMillis()}"
-        val mime = if (fileName.endsWith(".pdf", true)) "application/pdf" else "video/mp4"
-        val item = DownloadItem(
-            requestId = requestId,
-            sourceUrl = url,
-            fileName = sanitizeFileName(fileName),
-            mimeType = mime,
-            status = DownloadStatus.QUEUED,
-            bytesDownloaded = 0L,
-            totalBytes = 0L,
-            progress = 0,
-            destinationUri = null,
-            errorMessage = null,
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis()
-        )
-        database.upsert(item)
-        scheduleWorkerForItem(item)
+        // Legacy signature retained for binary compatibility. It has no lesson/entitlement
+        // context, so it cannot safely schedule a provider download.
+        throw SecurityException("Download requires an explicit provider authorization grant.")
     }
 
     private fun scheduleWorkerForItem(item: DownloadItem) {
@@ -228,6 +214,7 @@ class DownloadRepository private constructor(private val context: Context) {
     fun cancelDownload(requestId: String): Boolean {
         val existing = database.findById(requestId) ?: return false
         workManager.cancelUniqueWork("pw_pm_work_$requestId")
+        existing.destinationUri?.let { uri -> runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) } }
         database.delete(requestId)
         val tempPart = java.io.File(context.cacheDir, "pw_pm_part_${requestId}.part")
         if (tempPart.exists()) {
@@ -249,6 +236,8 @@ class DownloadRepository private constructor(private val context: Context) {
     }
 
     fun getAllDownloads(): List<DownloadItem> = database.getAll()
+
+    fun getDownload(requestId: String): DownloadItem? = database.findById(requestId)
 
     companion object {
         @Volatile

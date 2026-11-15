@@ -10,7 +10,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * SQLite persistence backing DownloadRepository so downloads survive app restarts.
  */
 class DownloadDatabase(context: Context) :
-    SQLiteOpenHelper(context, "pw_pm_downloads.db", null, 2) {
+    SQLiteOpenHelper(context, "pw_pm_downloads.db", null, 3) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -34,7 +34,8 @@ class DownloadDatabase(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS downloads")
+        // Preserve rows and resumable offsets. CREATE IF NOT EXISTS repairs a missing table;
+        // future schema changes must use additive ALTER TABLE migrations.
         onCreate(db)
     }
 

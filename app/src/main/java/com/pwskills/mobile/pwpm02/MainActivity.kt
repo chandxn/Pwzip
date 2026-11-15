@@ -35,6 +35,7 @@ class MainActivity : Activity(), View.OnClickListener {
 
     private lateinit var tabPortalBtn: Button
     private lateinit var tabPlayerBtn: Button
+    private lateinit var tabDownloadsBtn: Button
     private lateinit var tabAiBtn: Button
 
     private lateinit var repository: DownloadRepository
@@ -76,10 +77,13 @@ class MainActivity : Activity(), View.OnClickListener {
         }
 
         tabPortalBtn = createNavButton("★ PW Portal", 1001, "#059669")
-        tabPlayerBtn = createNavButton("▶ Course Player", 1002, "#2563EB")
+        tabPlayerBtn = createNavButton("▶ Player", 1002, "#2563EB")
+        tabDownloadsBtn = createNavButton("📥 Downloads", 1004, "#0F766E")
         tabAiBtn = createNavButton("✨ AI Tutor", 1003, "#7C3AED")
 
         topBar.addView(tabPortalBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
+        topBar.addView(tabPlayerBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
+        topBar.addView(tabDownloadsBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
         topBar.addView(tabAiBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
 
         val contentFrame = FrameLayout(this)
@@ -215,8 +219,9 @@ class MainActivity : Activity(), View.OnClickListener {
         portalWebView.resumeTimers()
         injectPortalSyncBridge(portalWebView)
         portalWebView.visibility = if (tabId == 1001) View.VISIBLE else View.GONE
-        playerWebView.visibility = if (tabId == 1002) View.VISIBLE else View.GONE
+        playerWebView.visibility = if (tabId == 1002 || tabId == 1004) View.VISIBLE else View.GONE
         aiTutorWebView.visibility = if (tabId == 1003) View.VISIBLE else View.GONE
+        if (tabId == 1004) playerWebView.evaluateJavascript("window.scrollTo(0,document.getElementById('unifiedDownloadManagerCard')?.offsetTop||0);", null)
         pushSessionToChildViews()
     }
 

@@ -331,7 +331,7 @@ select, input[type="text"] {
     </button>
   </div>
 
-  <section class="card hide" id="devDiagnosticCard" style="margin-top:10px;border-color:rgba(245,158,11,0.45);">
+  <section class="card hide" id="devDiagnosticCard" style="display:none!important;margin-top:10px;border-color:rgba(245,158,11,0.45);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
       <span style="font-size:12.5px;font-weight:800;color:#FCD34D;">🔧 Explicit Dual-Mode Acceptance Test Fixtures</span>
       <span class="pill amber">Fixtures Only (Not PW Course Lectures)</span>
@@ -1100,6 +1100,15 @@ function startProviderDualModeDownload(mode) {
     showActionBanner(grant.failureReason || "Offline access unavailable", true);
     return grant;
   }
+  if (mode === "APP_OFFLINE") {
+    const reply = JSON.parse(window.NativeDownloadBridge.enqueueAppOfflineDownload(
+      activeLessonState.lessonId, grant.sourceUrl, grant.mimeType || "application/x-mpegURL"
+    ));
+    if (!reply.ok) showActionBanner(reply.error || "Provider-authorized offline playback is unavailable.", true);
+    else showActionBanner("Provider-authorized in-app offline download queued.", false);
+    refreshNativeDownloadHistory();
+    return reply;
+  }
   const safeFile = ((activeLessonState.courseId || "course") + "_" + activeLessonState.lessonTitle)
     .replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64) + "_" + quality + ".mp4";
   return enqueueProductionRemoteDownload(grant.sourceUrl, safeFile, "video/mp4", {
@@ -1501,6 +1510,11 @@ async function continueFixtureTransfer(rec) {
 function pauseDownloadItem(id) {
   const rec = downloadRecords.find(r => r.id === id);
   if (!rec) return { ok: false };
+  if (rec.native) {
+    const result = JSON.parse(window.NativeDownloadBridge.pauseDownload(id));
+    refreshNativeDownloadHistory();
+    return result;
+  }
   if (activeTransfers[id]) activeTransfers[id].paused = true;
   rec.status = "PAUSED";
   rec.failureReason = "USER_PAUSED at " + fmtBytes(rec.bytesWrittenToPhoneStorage);
@@ -1523,6 +1537,11 @@ function simulateNetworkInterruption(id) {
 async function resumeDownloadItem(id) {
   const rec = downloadRecords.find(r => r.id === id);
   if (!rec) return { ok: false };
+  if (rec.native) {
+    const result = JSON.parse(window.NativeDownloadBridge.resumeDownload(id));
+    refreshNativeDownloadHistory();
+    return result;
+  }
   activeTransfers[id] = { paused: false, cancelled: false, networkInterrupted: false };
   if (rec.isDevFixture) {
     return await continueFixtureTransfer(rec);
@@ -1537,6 +1556,11 @@ async function resumeDownloadItem(id) {
 async function retryDownloadItem(id) {
   const rec = downloadRecords.find(r => r.id === id);
   if (!rec) return { ok: false };
+  if (rec.native) {
+    const result = JSON.parse(window.NativeDownloadBridge.retryDownload(id));
+    refreshNativeDownloadHistory();
+    return result;
+  }
   activeTransfers[id] = { paused: false, cancelled: false, networkInterrupted: false };
   if (rec.status === "FAILED" || rec.status === "CANCELLED") {
     rec.bytesWrittenToPhoneStorage = 0;
@@ -1552,12 +1576,23 @@ async function retryDownloadItem(id) {
 }
 
 function cancelDownloadItem(id) {
+  const rec = downloadRecords.find(r => r.id === id);
+  if (rec && rec.native) {
+    const result = JSON.parse(window.NativeDownloadBridge.cancelDownload(id));
+    refreshNativeDownloadHistory();
+    return result;
+  }
   return PwPortalProviderAdapter.releaseOfflineAccess(id);
 }
 
 function playItemOffline(id) {
   const rec = downloadRecords.find(r => r.id === id);
   if (!rec) return { ok: false, reason: "NOT_FOUND" };
+  if (rec.native) {
+    const result = JSON.parse(window.NativeDownloadBridge.openDownloadedFile(id));
+    if (!result.ok) showActionBanner(result.error || "Saved file could not be opened.", true);
+    return result;
+  }
   checkAndHandleLicenseExpiry();
   if (rec.status === "EXPIRED") {
     showActionBanner("Cannot play offline: Widevine license has EXPIRED. Renew license first.", true);
@@ -1604,13 +1639,34 @@ function closeOfflinePlayer() {
 }
 
 function loadPersistedQueue() {
+  // Device database is the source of truth. Never restore simulated browser fixture rows as downloads.
+  downloadRecords = [];
+  try { localStorage.removeItem(STORAGE_KEY_QUEUE); } catch (e) {}
+  refreshNativeDownloadHistory();
+}
+
+function refreshNativeDownloadHistory() {
+  if (!window.NativeDownloadBridge || !window.NativeDownloadBridge.getDownloadsStatusJson) return;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_QUEUE);
-    if (raw) downloadRecords = (JSON.parse(raw) || []).filter(r => r && r.id && r.lessonTitle);
+    const response = JSON.parse(window.NativeDownloadBridge.getDownloadsStatusJson());
+    if (!response.ok) throw new Error("Native download history unavailable");
+    downloadRecords = (response.downloads || []).map(d => ({
+      id: d.requestId, sourceUrl: d.sourceUrl, fileName: d.fileName,
+      lessonTitle: d.fileName, courseId: "Not provided by download source", courseTitle: "Not provided by download source",
+      lessonId: "Not provided by download source", downloadMode: d.downloadMode || "SHARED_EXPORT", mediaFormat: d.mimeType,
+      providerAuthStatus: "PROVIDER_AUTHORIZED", selectedResolution: "Original",
+      status: d.status, progress: d.progress, bytesWrittenToPhoneStorage: d.bytesDownloaded,
+      totalBytes: d.totalBytes, exportStatus: d.status === "COMPLETED" ? "VERIFIED_AND_SAVED" : "IN_PROGRESS",
+      offlinePlaybackAvailability: d.downloadMode === "APP_OFFLINE"
+        ? (d.status === "COMPLETED" ? "CACHED; PROVIDER LICENSE APPLIES" : "NOT_READY")
+        : (d.status === "COMPLETED" ? "AVAILABLE_WHILE_FILE_REMAINS" : "NOT_READY"),
+      licenseExpiryText: "Not applicable", failureReason: d.errorMessage || "None",
+      destinationUri: d.destinationUri, isDevFixture: false, native: true
+    }));
+    renderDownloadQueue();
   } catch (e) {
-    downloadRecords = [];
+    showActionBanner("Download history is temporarily unavailable: " + (e.message || e), true);
   }
-  renderDownloadQueue();
 }
 
 function savePersistedQueue() {
@@ -1691,7 +1747,7 @@ function renderDownloadQueue() {
         </div>
 
         <div class="dl-actions">
-          ${isCompleted ? `<button class="btn-success" onclick="playItemOffline('${r.id}')">🎬 Play Offline</button>` : ""}
+          ${isCompleted && r.destinationUri ? `<button class="btn-success" onclick="playItemOffline('${r.id}')">📂 Open Saved File</button>` : ""}
           ${r.status === "DOWNLOADING" ? `<button class="btn-warning" onclick="pauseDownloadItem('${r.id}')">⏸ Pause</button>` : ""}
           ${isPaused ? `<button class="btn-primary" onclick="resumeDownloadItem('${r.id}')">▶ Resume</button>` : ""}
           ${isFailed && r.status !== "UNSUPPORTED" ? `<button class="btn-primary" onclick="retryDownloadItem('${r.id}')">🔄 Retry</button>` : ""}
@@ -1742,6 +1798,7 @@ window.addEventListener("DOMContentLoaded", () => {
   } catch (e) {}
   console.log("__PW_REQ_SESSION__:player");
   setInterval(updateIndependentStatusBadges, 500);
+  setInterval(refreshNativeDownloadHistory, 2000);
 });
 </script>
 </body>
