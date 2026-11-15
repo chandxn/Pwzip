@@ -300,6 +300,7 @@
             "[aria-label*='lecture'], [aria-label*='lesson'], h1, h2, h3"
           );
           var bestTitle = "";
+          var bestId = "";
           var bestScore = -1;
           for (var i = 0; i < headings.length; i++) {
             var el = headings[i];
@@ -328,16 +329,18 @@
               bestScore = score;
               bestTitle = candidateTitle;
               var ownId = String(el.getAttribute("data-lesson-id") || el.getAttribute("data-lecture-id") || "").trim();
-              if (isValidProviderId(ownId)) {
-                meta.lessonId = ownId;
-                meta.identitySource = "DOM.headingAttribute";
-              }
+              bestId = isValidProviderId(ownId) ? ownId : "";
             }
           }
-          if (bestTitle) meta.lessonTitle = bestTitle;
-          if (bestTitle && !meta.lessonId && meta.identitySource === "__NEXT_DATA__") {
-            meta.lessonId = "";
-            meta.identitySource = "DOM.headingOnly_IdUnresolved";
+          if (bestTitle) {
+            meta.lessonTitle = bestTitle;
+            if (bestId) {
+              meta.lessonId = bestId;
+              meta.identitySource = "DOM.headingAttribute";
+            } else if (meta.identitySource === "__NEXT_DATA__") {
+              meta.lessonId = "";
+              meta.identitySource = "DOM.headingOnly_IdUnresolved";
+            }
           }
         }
       } catch (e) {}
