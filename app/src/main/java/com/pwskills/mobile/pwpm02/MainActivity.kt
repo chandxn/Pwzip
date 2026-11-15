@@ -200,7 +200,7 @@ class MainActivity : Activity(), View.OnClickListener {
         val script = cachedPortalSyncJs ?: try {
             val captionPipeline = assets.open("caption_pipeline.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
             val portalBridge = assets.open("portal_sync_bridge.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
-            (captionPipeline + "\n" + portalBridge).also { cachedPortalSyncJs = it }
+            CaptionBridgeScript.combine(captionPipeline, portalBridge).also { cachedPortalSyncJs = it }
         } catch (_: Exception) {
             return
         }
