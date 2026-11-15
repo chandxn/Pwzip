@@ -317,7 +317,7 @@ class NativeDownloadBridge(
         val supportedOffline = mime in setOf(MimeTypes.APPLICATION_M3U8, MimeTypes.APPLICATION_MPD) ||
             mime.startsWith("video/") || mime.startsWith("audio/")
         if (!supportedOffline) return JSONObject().put("ok", false).put("error", "This provider media format is not supported offline.").toString()
-        launchOfflinePlayer(requestId, media3.request.uri, mime, requestId, cacheOnly = true, lessonId = requestId, requiresLicense = keySet != null)
+        return launchOfflinePlayer(requestId, media3.request.uri, mime, requestId, cacheOnly = true, lessonId = requestId, requiresLicense = keySet != null)
     }
 
     private fun launchOfflinePlayer(
@@ -408,7 +408,7 @@ class NativeDownloadBridge(
     }.getOrNull()
 
     private fun getAllMedia3Downloads(): List<Download> = runCatching {
-        media3Engine.downloadManager.downloadIndex.getDownloads(intArrayOf()).use { cursor ->
+        media3Engine.downloadManager.downloadIndex.getDownloads().use { cursor ->
             val downloads = mutableListOf<Download>()
             while (cursor.moveToNext()) downloads.add(cursor.download)
             downloads

@@ -291,7 +291,7 @@ class DownloadRepository private constructor(private val context: Context) {
             val uri = Uri.parse(uriString)
             if (uri.scheme == "content") {
                 context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
-                    descriptor.statSize < 0L || descriptor.statSize == item.bytesDownloaded
+                    descriptor.length < 0L || descriptor.length == item.bytesDownloaded
                 } ?: false
             } else {
                 val path = if (uri.scheme == "file") uri.path else uriString
