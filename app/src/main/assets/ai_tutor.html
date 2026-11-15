@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PW-PM · AI Tutor &amp; Lesson Study Mentor</title>
+<style>
+:root {
+  --bg: #070B14;
+  --surface: #0F172A;
+  --elevated: #1E293B;
+  --border: rgba(56, 189, 248, 0.22);
+  --accent: #0EA5E9;
+  --blue: #2563EB;
+  --emerald: #10B981;
+  --amber: #F59E0B;
+  --rose: #EF4444;
+  --text: #F8FAFC;
+  --muted: #94A3B8;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+  width: 100%; max-width: 100%; overflow-x: hidden;
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 13px; line-height: 1.48;
+}
+main { padding: 12px; width: 100%; padding-bottom: 56px; }
+.card {
+  background: linear-gradient(155deg, rgba(15, 23, 42, 0.98), rgba(10, 18, 34, 0.98));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.42);
+  width: 100%;
+}
+.hide { display: none !important; }
+.waiting-box { text-align: center; padding: 26px 14px; }
+.pill {
+  display: inline-block; padding: 3px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700;
+  background: rgba(14, 165, 233, 0.18); color: #7DD3FC; border: 1px solid rgba(14, 165, 233, 0.4);
+  max-width: 100%; overflow-wrap: anywhere;
+}
+.pill.green { background: rgba(16, 185, 129, 0.16); color: #6EE7B7; border-color: rgba(16, 185, 129, 0.4); }
+.pill.amber { background: rgba(245, 158, 11, 0.18); color: #FCD34D; border-color: rgba(245, 158, 11, 0.5); }
+.pill.rose  { background: rgba(239, 68, 68, 0.18); color: #FCA5A5; border-color: rgba(239, 68, 68, 0.5); }
+.pill.blue  { background: rgba(37, 99, 235, 0.2); color: #93C5FD; border-color: rgba(59, 130, 246, 0.45); }
+.pill.slate { background: rgba(148, 163, 184, 0.16); color: #CBD5E1; border-color: rgba(148, 163, 184, 0.4); }
+
+.status-bar-3 {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  background: #070B14; border: 1px solid var(--border); border-radius: 10px;
+  padding: 9px 10px; margin-top: 10px;
+}
+.context-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+  background: #070B14; border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px; margin: 10px 0;
+}
+.ctx-cell { min-width: 0; }
+.ctx-cell.full { grid-column: 1 / -1; }
+.ctx-k { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+.ctx-v { font-size: 12px; font-weight: 700; color: #F8FAFC; overflow-wrap: anywhere; word-break: break-word; }
+.content-box {
+  background: #070B14; border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; font-size: 12.5px; color: #E2E8F0; overflow-wrap: anywhere; margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+button {
+  background: var(--elevated); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 10px; min-height: 42px; font-size: 11.5px; font-weight: 700; cursor: pointer;
+}
+button:active { transform: scale(0.98); }
+.btn-primary { background: linear-gradient(135deg, #0284C7, #2563EB); border-color: #38BDF8; color: #FFFFFF; }
+.btn-success { background: #059669; border-color: var(--emerald); color: #FFFFFF; }
+.btn-warning { background: #D97706; border-color: var(--amber); color: #FFFFFF; }
+.btn-danger  { background: rgba(239, 68, 68, 0.22); border-color: var(--rose); color: #FCA5A5; }
+.tab-bar {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px;
+}
+.tab-btn { padding: 10px 8px; font-size: 11.5px; text-align: center; border-radius: 9px; }
+.tab-btn.active { background: linear-gradient(135deg, #0284C7, #2563EB); border-color: #38BDF8; color: #FFFFFF; }
+input, textarea {
+  width: 100%; background: #070B14; color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px; min-height: 42px; font-size: 12.5px; font-family: inherit;
+}
+</style>
+</head>
+<body>
+<main>
+  <section class="card" id="lectureWorkspace">
+    <div style="font-size:15px;font-weight:800;margin-bottom:8px">📚 Uploaded Lecture Tutor</div>
+    <p style="color:var(--muted);margin-bottom:10px">Use lecture files or transcripts you are authorized to use. This tutor does not read protected course streams.</p>
+    <label class="ctx-k" for="apiBase">Tutor server</label>
+    <input id="apiBase" type="url" placeholder="https://your-secure-tutor-server.example" autocomplete="url" style="margin:5px 0 8px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <input id="authEmail" type="email" placeholder="Email" autocomplete="username">
+      <input id="authPassword" type="password" placeholder="Password (10+ characters)" autocomplete="current-password">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <button class="btn-primary" onclick="authenticate('login')">Sign in</button>
+      <button onclick="authenticate('register')">Create account</button>
+    </div>
+    <div id="authStatus" class="content-box" style="margin:8px 0">Sign in to your tutor server.</div>
+    <input id="lectureTitle" type="text" placeholder="Lecture title (optional)" style="margin-bottom:8px">
+    <input id="lectureFile" type="file" accept="audio/*,video/*,.mp3,.mp4,.m4a,.wav,.webm,.ogg,.flac" style="margin-bottom:8px">
+    <div style="color:var(--muted);font-size:11px;margin:-4px 0 8px">Audio/video files up to 25 MB. For longer lectures, upload a transcript with timestamps.</div>
+    <button class="btn-success" style="width:100%" onclick="uploadLecture()">Upload &amp; transcribe lecture</button>
+    <textarea id="manualTranscript" placeholder="Or paste a transcript you are authorized to use (20 characters minimum)" rows="3" style="margin-top:8px"></textarea>
+    <button style="width:100%;margin-top:6px" onclick="saveTranscript()">Save transcript</button>
+    <select id="lectureSelect" onchange="loadLecture()" style="width:100%;margin-top:8px;background:#070B14;color:white;padding:10px;border:1px solid var(--border);border-radius:8px"><option value="">Choose a lecture</option></select>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <button class="btn-primary" onclick="createStudyGuide()">Summary &amp; chapters</button>
+      <button id="voiceButton" onclick="toggleVoiceTutor()">Start voice tutor</button>
+    </div>
+    <div id="studyGuide" class="content-box" style="margin-top:8px">Your lecture summary, timestamped transcript, and chapters will appear here.</div>
+    <div id="voiceStatus" class="content-box">Voice tutoring is off.</div>
+    <audio id="voiceAudio" autoplay></audio>
+    <div id="chatHistory" class="content-box" style="max-height:240px;overflow:auto">Ask grounded questions about the selected lecture.</div>
+    <textarea id="chatQuestion" placeholder="Ask about this lecture…" rows="2"></textarea>
+    <button class="btn-primary" style="width:100%;margin-top:6px" onclick="sendTutorQuestion()">Ask tutor</button>
+  </section>
+
+  <!-- Waiting Card when no active lesson is open in PW Portal -->
+  <section class="card waiting-box" id="aiWaitingCard">
+    <div style="font-size:28px;margin-bottom:6px;">✨</div>
+    <div style="font-size:15.5px;font-weight:800;color:#FFFFFF;margin-bottom:6px;">PW-PM AI Tutor · Waiting for Active Portal Lesson</div>
+    <p style="font-size:12px;color:var(--muted);max-width:440px;margin:0 auto 6px auto;">
+      Portal Session: <b id="aiWaitingStatusBadge" style="color:#FCA5A5;">ACTIVE_LESSON_UNRESOLVED</b> · Dashboard &amp; progress text ignored
+    </p>
+    <p style="font-size:11.5px;color:var(--muted);max-width:440px;margin:0 auto;">
+      Open a lecture in <b>★ PW Portal</b> (such as <b>Basics of computer fundamentals</b>) to bind AI Tutor to the canonical <code>ActiveLessonState</code>.
+    </p>
+  </section>
+
+  <!-- Canonical ActiveLessonState Card -->
+  <section class="card hide" id="aiSyncedCard">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+      <div style="font-size:14px;font-weight:800;color:#FFFFFF;">✨ Canonical ActiveLessonState (AI Tutor)</div>
+      <span class="pill blue" id="aiContextEpochBadge">Context #1</span>
+    </div>
+
+    <div class="status-bar-3">
+      <div>
+        <div class="ctx-k">Playback</div>
+        <div style="margin-top:3px;"><span class="pill slate" id="aiBadgePlayback">PAUSED</span></div>
+      </div>
+      <div>
+        <div class="ctx-k">Session</div>
+        <div style="margin-top:3px;"><span class="pill green" id="aiBadgeSession">CONNECTED</span></div>
+      </div>
+      <div>
+        <div class="ctx-k">Freshness</div>
+        <div style="margin-top:3px;"><span class="pill green" id="aiBadgeFreshness">FRESH</span></div>
+      </div>
+    </div>
+
+    <div class="context-grid">
+      <div class="ctx-cell">
+        <div class="ctx-k">Lesson ID (Canonical)</div>
+        <div class="ctx-v" id="aiLessonId" style="color:#38BDF8;">Not exposed by provider</div>
+      </div>
+      <div class="ctx-cell">
+        <div class="ctx-k">Course ID</div>
+        <div class="ctx-v" id="aiCourseId">Not exposed by provider</div>
+      </div>
+      <div class="ctx-cell">
+        <div class="ctx-k">Course Title</div>
+        <div class="ctx-v" id="aiCourseName">Not exposed by provider</div>
+      </div>
+      <div class="ctx-cell">
+        <div class="ctx-k">Module ID &amp; Title</div>
+        <div class="ctx-v" id="aiModuleName">Not exposed by provider</div>
+      </div>
+      <div class="ctx-cell full">
+        <div class="ctx-k">Active Lesson Title</div>
+        <div class="ctx-v" id="aiLessonTitle" style="color:#7DD3FC;font-size:13.5px;">Not exposed by provider</div>
+      </div>
+      <div class="ctx-cell full">
+        <div class="ctx-k">Playback Position &amp; Source</div>
+        <div class="ctx-v" id="aiPlaybackPosition" style="font-family:monospace;font-size:11.5px;color:#93C5FD;">00:00 / Not exposed by provider</div>
+      </div>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" id="modeBtn_SUMMARY" onclick="generateStudyView('SUMMARY')">1. Lesson Summary</button>
+      <button class="tab-btn" id="modeBtn_KEY_CONCEPTS" onclick="generateStudyView('KEY_CONCEPTS')">2. Key Concepts</button>
+      <button class="tab-btn" id="modeBtn_FLASHCARDS" onclick="generateStudyView('FLASHCARDS')">3. Active Flashcards</button>
+      <button class="tab-btn" id="modeBtn_QUIZ" onclick="generateStudyView('QUIZ')">4. Practice Quiz</button>
+    </div>
+
+    <div class="content-box" id="studyOutputBox"></div>
+
+    <!-- Active Lesson Q&A -->
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div style="font-size:12px;font-weight:800;color:#7DD3FC;margin-bottom:6px;">
+        💬 Ask AI Tutor About <span id="askLessonInlineLabel">Active Lesson</span>
+      </div>
+      <input type="text" id="learnerQuestionInput" placeholder="Enter a sub-topic or question for this active lesson..." style="margin-bottom:8px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <button class="btn-primary" onclick="answerLearnerQuestion()">Explain for Active Lesson</button>
+        <button class="btn-success" onclick="saveTimestampedNote()">+ Save Timestamped Note</button>
+      </div>
+      <div class="content-box" id="questionAnswerBox">Ask a question above to generate a response bound strictly to the active lesson.</div>
+    </div>
+
+    <!-- Lesson-Scoped Notes -->
+    <div style="margin-top:8px;">
+      <div style="font-size:12px;font-weight:800;color:#6EE7B7;margin-bottom:6px;">📝 Notes Scoped to Active Lesson ID</div>
+      <div class="content-box" id="savedNotesBox" style="margin-bottom:0;">No notes saved for this lesson yet.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const NOT_EXPOSED = "Not exposed by provider";
+const STORAGE_KEY_CANONICAL_LESSON = "pw_pm_canonical_active_lesson_v21";
+let tutorToken = localStorage.getItem("pw_tutor_token") || "";
+let selectedLectureId = localStorage.getItem("pw_tutor_lecture") || "";
+let voicePeer = null;
+let voiceChannel = null;
+const apiBase = () => ($("apiBase").value || "").trim().replace(/\/$/, "");
+function apiHeaders(json=true) { const h={}; if(tutorToken)h.Authorization="Bearer "+tutorToken; if(json)h["Content-Type"]="application/json"; return h; }
+async function authenticate(mode) { try { const base=apiBase(); if(!/^https:\/\//i.test(base)) throw new Error("Enter the HTTPS address of your tutor server."); const response=await fetch(base+"/api/auth/"+mode,{method:"POST",headers:apiHeaders(),body:JSON.stringify({email:$('authEmail').value,password:$('authPassword').value})}); const data=await response.json();if(!response.ok)throw new Error(data.error||"Sign in failed.");tutorToken=data.token;localStorage.setItem("pw_tutor_token",tutorToken);$('authStatus').textContent="Signed in. Loading your lecture library…";await refreshLectures();}catch(e){$('authStatus').textContent=e.message;} }
+async function refreshLectures(){const r=await fetch(apiBase()+"/api/lectures",{headers:apiHeaders(false)});const list=await r.json();if(!r.ok)throw new Error(list.error||"Could not load lectures.");const s=$('lectureSelect');s.innerHTML='<option value="">Choose a lecture</option>'+list.map(l=>`<option value="${escapeAttr(l.id)}">${escapeHtml(l.title)}</option>`).join('');if(list.some(l=>l.id===selectedLectureId))s.value=selectedLectureId;else selectedLectureId="";$('authStatus').textContent=`Signed in · ${list.length} lecture${list.length===1?'':'s'} available.`;if(selectedLectureId)await loadLecture();}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));} function escapeAttr(s){return escapeHtml(s);}
+async function uploadLecture(){try{if(!tutorToken)throw new Error("Sign in first.");const f=$('lectureFile').files[0];if(!f)throw new Error("Choose an authorized lecture file.");const form=new FormData();form.append('lecture',f);form.append('title',$('lectureTitle').value||f.name);$('authStatus').textContent="Uploading and transcribing…";const r=await fetch(apiBase()+"/api/lectures/upload",{method:'POST',headers:apiHeaders(false),body:form});const d=await r.json();if(!r.ok)throw new Error(d.error||"Upload failed.");selectedLectureId=d.id;localStorage.setItem('pw_tutor_lecture',d.id);await refreshLectures();$('lectureSelect').value=d.id;$('studyGuide').textContent='Transcript ready. Use Summary & chapters to create timestamped study notes.';renderTranscript(d);}catch(e){$('authStatus').textContent=e.message;}}
+async function saveTranscript(){try{if(!tutorToken)throw new Error('Sign in first.');const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId||'transcript'),{method:'POST',headers:apiHeaders(),body:JSON.stringify({title:$('lectureTitle').value||'Uploaded transcript',transcript:$('manualTranscript').value})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not save transcript.');selectedLectureId=d.id;localStorage.setItem('pw_tutor_lecture',d.id);await refreshLectures();renderTranscript(d);}catch(e){$('authStatus').textContent=e.message;}}
+function renderTranscript(l){const body=(l.segments||[]).map(s=>`[${fmtTime(s.start)}] ${s.text}`).join('\n')||l.transcript||'';$('studyGuide').textContent=body?`Transcript · ${l.title}\n\n${body}`:'No transcript text is available.';}
+async function loadLecture(){selectedLectureId=$('lectureSelect').value;if(!selectedLectureId)return;localStorage.setItem('pw_tutor_lecture',selectedLectureId);try{const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId),{headers:apiHeaders(false)});const l=await r.json();if(!r.ok)throw new Error(l.error);renderTranscript(l);const h=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/history',{headers:apiHeaders(false)});const messages=await h.json();$('chatHistory').innerHTML=messages.map(m=>`<b>${m.role==='user'?'You':'Tutor'}:</b> ${escapeHtml(m.content)}`).join('<br><br>')||'Ask grounded questions about this lecture.';}catch(e){$('authStatus').textContent=e.message;}}
+async function saveVoiceMessage(role,content){if(!content||!selectedLectureId)return;try{await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/voice-message',{method:'POST',headers:apiHeaders(),body:JSON.stringify({role,content})});const box=$('chatHistory');box.innerHTML+=`<br><br><b>${role==='user'?'You':'Tutor'} (voice):</b> ${escapeHtml(content)}`;box.scrollTop=box.scrollHeight;}catch(e){$('voiceStatus').textContent='Could not save voice history: '+e.message;}}
+async function createStudyGuide(){try{if(!selectedLectureId)throw new Error('Choose an uploaded lecture first.');const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/study-guide',{method:'POST',headers:apiHeaders(),body:'{}'});const d=await r.json();if(!r.ok)throw new Error(d.error);$('studyGuide').textContent=d.summary+'\n\n'+d.chapters.map(c=>`[${fmtTime(c.start_seconds)}] ${c.title}\n${c.summary}`).join('\n\n');}catch(e){$('authStatus').textContent=e.message;}}
+async function sendTutorQuestion(){try{if(!selectedLectureId)throw new Error('Choose an uploaded lecture first.');const question=$('chatQuestion').value.trim();if(!question)return;const box=$('chatHistory');box.textContent+='\n\nYou: '+question+'\nTutor: ';$('chatQuestion').value='';const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/chat',{method:'POST',headers:apiHeaders(),body:JSON.stringify({question})});if(!r.ok){const e=await r.json();throw new Error(e.error||'Tutor request failed.');}const reader=r.body.getReader(),decoder=new TextDecoder();let pending='';while(true){const {value,done}=await reader.read();if(done)break;pending+=decoder.decode(value,{stream:true});const parts=pending.split('\n\n');pending=parts.pop();for(const part of parts){const line=part.split('\n').find(x=>x.startsWith('data: '));if(!line||line==='data: [DONE]')continue;const obj=JSON.parse(line.slice(6));if(obj.delta)box.textContent+=obj.delta;}}box.scrollTop=box.scrollHeight;}catch(e){$('authStatus').textContent=e.message;}}
+async function toggleVoiceTutor(){if(voicePeer){voicePeer.close();voicePeer=null;$('voiceAudio').srcObject=null;$('voiceButton').textContent='Start voice tutor';$('voiceStatus').textContent='Voice tutoring is off.';return;}try{if(!selectedLectureId)throw new Error('Choose an uploaded lecture first.');const session=await fetch(apiBase()+'/api/realtime/session',{method:'POST',headers:apiHeaders(),body:JSON.stringify({lectureId:selectedLectureId})});const cfg=await session.json();if(!session.ok)throw new Error(cfg.error||'Could not start voice session.');const secret=cfg.value||cfg.client_secret?.value;if(!secret)throw new Error('Server did not return a temporary voice credential.');voicePeer=new RTCPeerConnection();voicePeer.ontrack=e=>$('voiceAudio').srcObject=e.streams[0];voicePeer.onconnectionstatechange=()=>$('voiceStatus').textContent='Voice session: '+voicePeer.connectionState;voiceChannel=voicePeer.createDataChannel('oai-events');voiceChannel.onmessage=e=>{const event=JSON.parse(e.data);if(event.type==='input_audio_buffer.speech_started')$('voiceStatus').textContent='Listening… (interruptions enabled)';if(event.type==='response.created')$('voiceStatus').textContent='Tutor is responding. Speak to interrupt.';if(event.type==='conversation.item.input_audio_transcription.completed')saveVoiceMessage('user',event.transcript);if(event.type==='response.audio_transcript.done'||event.type==='response.output_audio_transcript.done')saveVoiceMessage('assistant',event.transcript);};const mic=await navigator.mediaDevices.getUserMedia({audio:true});mic.getTracks().forEach(t=>voicePeer.addTrack(t,mic));const offer=await voicePeer.createOffer();await voicePeer.setLocalDescription(offer);const answer=await fetch('https://api.openai.com/v1/realtime/calls',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/sdp'},body:offer.sdp});if(!answer.ok)throw new Error('Realtime voice connection failed ('+answer.status+').');await voicePeer.setRemoteDescription({type:'answer',sdp:await answer.text()});$('voiceButton').textContent='End voice tutor';$('voiceStatus').textContent='Voice tutor connected. Speak naturally; interruptions are enabled.';}catch(e){if(voicePeer){voicePeer.close();voicePeer=null;}$('voiceStatus').textContent=e.message;}}
+
+// Canonical ActiveLessonState inside AI Tutor
+let aiLessonState = null;
+let contextEpoch = 0;
+let activeStudyMode = "SUMMARY";
+
+function isBlockedDashboardOrGarbage(str) {
+  if (!str || typeof str !== "string") return true;
+  const trimmed = str.trim();
+  const s = trimmed.toLowerCase();
+  if (s.length < 2) return true;
+  if (s === "dashboard" || s === "overview" || s === "home" || s === "login" || s === "courses" || s === "batches" || s === "in progress" || s === "completed" || s === "watched") return true;
+  if (s.includes("days streak") || s.includes("day streak") || s.includes("streak") || s.includes("learn skills that matter") || s.includes("course progress") || s.includes("overall progress") || /^\d+\s*(modules?|lessons?|lectures?|videos?|chapters?|hours?|mins?|minutes?)$/i.test(s)) return true;
+  if (/^(\d+%(\s*(complete|completed|watched|done))?|\d+\s*(\/|of)\s*\d+(\s*(lessons?|lectures?|modules?|videos?|chapters?|completed))?|\d{1,2}:\d{2}(:\d{2})?(\s*\/\s*\d{1,2}:\d{2}(:\d{2})?)?)$/i.test(trimmed)) return true;
+  return false;
+}
+
+function fmtTime(sec) {
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return h + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+
+function isValidProviderId(rawId) {
+  if (!rawId || typeof rawId !== "string") return false;
+  const trimmed = rawId.trim();
+  if (trimmed.length < 3 || trimmed.length > 128) return false;
+  if (/\s|%|:|\//.test(trimmed)) return false;
+  if (isBlockedDashboardOrGarbage(trimmed)) return false;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("lesson_") || /^(null|undefined|none|unknown|unresolved|study|learn|watch|lecture|lesson|video)$/.test(lower)) return false;
+  return /^[A-Za-z0-9_-]+$/.test(trimmed);
+}
+
+function normalizeIncomingState(raw) {
+  if (!raw) return null;
+  const obj = (typeof raw === "string") ? JSON.parse(raw) : raw;
+  if (!obj || typeof obj !== "object") return null;
+
+  const nowMs = Date.now();
+  const lastUpdatedAt = Number(obj.lastUpdatedAt || obj.updatedAtMs || obj.eventTimestampMs || nowMs);
+  const seq = Number(obj.seq || lastUpdatedAt);
+
+  if (obj.status === "ACTIVE_LESSON_UNRESOLVED" || obj.connectionState === "ACTIVE_LESSON_UNRESOLVED" || obj.hasActiveLesson === false) {
+    return {
+      hasActiveLesson: false,
+      status: "ACTIVE_LESSON_UNRESOLVED",
+      seq: seq,
+      lastUpdatedAt: lastUpdatedAt,
+      reason: obj.reason || "ACTIVE_LESSON_UNRESOLVED",
+      observedLessonTitle: obj.observedLessonTitle || null
+    };
+  }
+
+  const rawTitle = String(obj.lessonTitle || obj.title || "").trim();
+  const rawCourseId = String(obj.courseId || "").trim();
+  const rawLessonId = String(obj.lessonId || "").trim();
+
+  if (isBlockedDashboardOrGarbage(rawTitle)) {
+    return {
+      hasActiveLesson: false,
+      status: "ACTIVE_LESSON_UNRESOLVED",
+      rejectedDashboardDefault: true,
+      seq: seq,
+      lastUpdatedAt: lastUpdatedAt,
+      reason: "LESSON_TITLE_INVALID_OR_BLOCKED"
+    };
+  }
+
+  if (!isValidProviderId(rawLessonId)) {
+    return {
+      hasActiveLesson: false,
+      status: "ACTIVE_LESSON_UNRESOLVED",
+      seq: seq,
+      lastUpdatedAt: lastUpdatedAt,
+      reason: "LESSON_ID_UNRESOLVED",
+      observedLessonTitle: rawTitle
+    };
+  }
+
+  const cleanCourseId = isValidProviderId(rawCourseId) ? rawCourseId : "";
+  const cleanCourseTitle = isBlockedDashboardOrGarbage(obj.courseTitle || obj.courseName) ? "" : String(obj.courseTitle || obj.courseName || "").trim();
+  const cleanModuleId = isValidProviderId(obj.moduleId) ? String(obj.moduleId).trim() : "";
+  const cleanModuleTitle = isBlockedDashboardOrGarbage(obj.moduleTitle || obj.moduleName) ? "" : String(obj.moduleTitle || obj.moduleName || "").trim();
+
+  const canonicalLessonId = rawLessonId;
+
+  return {
+    hasActiveLesson: obj.hasActiveLesson !== false && obj.connectionState !== "DISCONNECTED",
+    connectionState: obj.connectionState || "CONNECTED",
+    seq: seq,
+    lessonId: canonicalLessonId,
+    lessonTitle: rawTitle,
+    courseId: cleanCourseId,
+    courseTitle: cleanCourseTitle,
+    moduleId: cleanModuleId,
+    moduleTitle: cleanModuleTitle,
+    source: String(obj.source || obj.positionSource || "HTMLMediaElement.timeupdate"),
+    lastUpdatedAt: lastUpdatedAt,
+    currentPosition: Math.max(0, Number(obj.currentPosition ?? obj.currentTimeSec ?? 0) || 0),
+    duration: Math.max(0, Number(obj.duration ?? obj.durationSec ?? 0) || 0),
+    playbackState: String(obj.playbackState || "PAUSED"),
+    transcript: String(obj.transcript || obj.transcriptText || ""),
+    notes: String(obj.notes || obj.lectureNotesText || "")
+  };
+}
+
+function buildLessonBoundContent(mode) {
+  if (!aiLessonState || !aiLessonState.hasActiveLesson) return "Waiting for a resolved active lesson. Upload or paste an authorized transcript in Uploaded Lecture Tutor to generate study material.";
+  return "Portal lesson detected: " + aiLessonState.lessonTitle + " (" + aiLessonState.lessonId + "). This lesson context does not provide lecture content. Upload an authorized lecture file or paste its transcript above; summaries, answers, and timestamp references will use only that source.";
+}
+
+function generateStudyView(mode) {
+  activeStudyMode = mode || "SUMMARY";
+  ["SUMMARY", "KEY_CONCEPTS", "FLASHCARDS", "QUIZ"].forEach(m => {
+    const btn = $("modeBtn_" + m);
+    if (btn) btn.className = (m === activeStudyMode) ? "tab-btn active" : "tab-btn";
+  });
+  $("studyOutputBox").textContent = buildLessonBoundContent(activeStudyMode);
+}
+
+function answerLearnerQuestion() {
+  if (selectedLectureId) { $("chatQuestion").value = $("learnerQuestionInput").value; sendTutorQuestion(); return; }
+  $("questionAnswerBox").textContent = "Choose an uploaded lecture or transcript in Uploaded Lecture Tutor first. Answers and timestamps are grounded only in that authorized source.";
+}
+
+function getNotesKey() {
+  return "pw_pm_v21_notes_" + (aiLessonState && aiLessonState.lessonId ? aiLessonState.lessonId : "none");
+}
+
+function renderLessonNotes() {
+  if (!aiLessonState || !aiLessonState.hasActiveLesson) return;
+  try {
+    const raw = localStorage.getItem(getNotesKey());
+    const list = raw ? JSON.parse(raw) : [];
+    if (!list.length) {
+      $("savedNotesBox").textContent = "No notes saved for \"" + aiLessonState.lessonTitle + "\" (" + aiLessonState.lessonId + ") yet.";
+      return;
+    }
+    $("savedNotesBox").textContent = list.map(n => "[" + n.time + "] (" + n.lessonId + "): " + n.text).join("\n");
+  } catch (e) {
+    $("savedNotesBox").textContent = "No notes saved yet.";
+  }
+}
+
+function saveTimestampedNote() {
+  if (!aiLessonState || !aiLessonState.hasActiveLesson) return;
+  const q = ($("learnerQuestionInput").value || "").trim() || ("Key takeaway from " + aiLessonState.lessonTitle);
+  try {
+    const raw = localStorage.getItem(getNotesKey());
+    const list = raw ? JSON.parse(raw) : [];
+    list.unshift({
+      lessonId: aiLessonState.lessonId,
+      lessonTitle: aiLessonState.lessonTitle,
+      time: fmtTime(aiLessonState.currentPosition),
+      text: q,
+      savedAt: Date.now()
+    });
+    localStorage.setItem(getNotesKey(), JSON.stringify(list));
+    $("learnerQuestionInput").value = "";
+    renderLessonNotes();
+  } catch (e) {}
+}
+
+function applySessionState(rawInput) {
+  let incoming = null;
+  try {
+    incoming = normalizeIncomingState(rawInput);
+  } catch (e) {
+    return { accepted: false, reason: "INVALID_JSON" };
+  }
+
+  if (!incoming || !incoming.hasActiveLesson) {
+    if (aiLessonState && incoming && incoming.lastUpdatedAt && incoming.lastUpdatedAt < aiLessonState.lastUpdatedAt) {
+      return { accepted: false, status: "STALE_EVENT_IGNORED", reason: "STALE_EVENT_TIMESTAMP" };
+    }
+    // Immediately clear aiLessonState so previous lessonId/context is NEVER reused when a new lesson is unresolved!
+    aiLessonState = null;
+    try { localStorage.removeItem(STORAGE_KEY_CANONICAL_LESSON); } catch (e) {}
+    $("aiWaitingCard").classList.remove("hide");
+    $("aiSyncedCard").classList.add("hide");
+    if ($("aiWaitingStatusBadge")) {
+      $("aiWaitingStatusBadge").textContent = "ACTIVE_LESSON_UNRESOLVED (" + ((incoming && incoming.reason) || "UNRESOLVED") + ")";
+    }
+    return {
+      accepted: false,
+      status: "ACTIVE_LESSON_UNRESOLVED",
+      reason: (incoming && incoming.reason) || "ACTIVE_LESSON_UNRESOLVED",
+      observedLessonTitle: (incoming && incoming.observedLessonTitle) || null
+    };
+  }
+
+  // Reject delayed events belonging to an older lesson or lower sequence number
+  if (aiLessonState && aiLessonState.hasActiveLesson) {
+    if (incoming.lastUpdatedAt < aiLessonState.lastUpdatedAt) {
+      return { accepted: false, reason: "STALE_EVENT_TIMESTAMP" };
+    }
+    if (incoming.lessonId === aiLessonState.lessonId && incoming.seq < aiLessonState.seq) {
+      return { accepted: false, reason: "STALE_SEQUENCE_NUMBER" };
+    }
+  }
+
+  const lessonChanged = !aiLessonState ||
+                        aiLessonState.lessonId !== incoming.lessonId ||
+                        aiLessonState.lessonTitle !== incoming.lessonTitle;
+
+  aiLessonState = incoming;
+  try {
+    localStorage.setItem(STORAGE_KEY_CANONICAL_LESSON, JSON.stringify(aiLessonState));
+  } catch (e) {}
+
+  $("aiWaitingCard").classList.add("hide");
+  $("aiSyncedCard").classList.remove("hide");
+
+  if (lessonChanged) {
+    contextEpoch += 1;
+    $("aiContextEpochBadge").textContent = "Context #" + contextEpoch;
+    $("learnerQuestionInput").value = "";
+    $("questionAnswerBox").textContent =
+      "Context reset for active lesson: \"" + aiLessonState.lessonTitle + "\" (ID: " + aiLessonState.lessonId + ").";
+  }
+
+  $("aiLessonId").textContent = aiLessonState.lessonId || NOT_EXPOSED;
+  $("aiCourseId").textContent = aiLessonState.courseId || NOT_EXPOSED;
+  $("aiCourseName").textContent = aiLessonState.courseTitle || NOT_EXPOSED;
+  const modText = (aiLessonState.moduleId && aiLessonState.moduleTitle)
+    ? (aiLessonState.moduleId + " · " + aiLessonState.moduleTitle)
+    : (aiLessonState.moduleTitle || aiLessonState.moduleId || NOT_EXPOSED);
+  $("aiModuleName").textContent = modText;
+  $("aiLessonTitle").textContent = aiLessonState.lessonTitle;
+  $("askLessonInlineLabel").textContent = aiLessonState.lessonTitle;
+
+  const posStr = fmtTime(aiLessonState.currentPosition);
+  const durStr = aiLessonState.duration > 0 ? fmtTime(aiLessonState.duration) : NOT_EXPOSED;
+  $("aiPlaybackPosition").textContent =
+    posStr + " / " + durStr + " · Seq #" + aiLessonState.seq + " · " + aiLessonState.source;
+
+  $("aiBadgePlayback").textContent = aiLessonState.playbackState;
+  $("aiBadgePlayback").className = aiLessonState.playbackState === "PLAYING" ? "pill green" : "pill slate";
+
+  generateStudyView(activeStudyMode);
+  renderLessonNotes();
+  return { accepted: true, lessonChanged, contextEpoch, aiLessonState };
+}
+
+window.__pwApplySessionState = window.receiveLessonSync = applySessionState;
+
+window.addEventListener("DOMContentLoaded", () => {
+  $("apiBase").value = localStorage.getItem("pw_tutor_api_base") || "";
+  $("apiBase").addEventListener("change", () => localStorage.setItem("pw_tutor_api_base", apiBase()));
+  try {
+    const cached = localStorage.getItem(STORAGE_KEY_CANONICAL_LESSON);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && !isBlockedDashboardOrGarbage(parsed.lessonTitle)) {
+        applySessionState(parsed);
+      } else {
+        localStorage.removeItem(STORAGE_KEY_CANONICAL_LESSON);
+      }
+    }
+  } catch (e) {}
+  console.log("__PW_REQ_SESSION__:ai_tutor");
+});
+</script>
+</body>
+</html>

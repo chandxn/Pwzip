@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+test('server module exposes app and health route', async () => {
+  process.env.NODE_ENV = 'test';
+  process.env.JWT_SECRET = 'test-secret-with-more-than-32-characters';
+  process.env.DATABASE_PATH = ':memory:';
+  const { app } = await import('../src/server.js');
+  const server = app.listen(0);
+  await new Promise(resolve => server.once('listening', resolve));
+  const { port } = server.address();
+  const response = await fetch(`http://127.0.0.1:${port}/health`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true });
+  const register=await fetch(`http://127.0.0.1:${port}/api/auth/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'learner@example.com',password:'a-long-test-password'})});
+  assert.equal(register.status,201);
+  const {token}=await register.json();
+  const created=await fetch(`http://127.0.0.1:${port}/api/lectures/transcript`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({title:'Test lecture',transcript:'An authorized transcript for testing the grounded tutor.'})});
+  assert.equal(created.status,201);
+  const lecture=await created.json();
+  const owned=await fetch(`http://127.0.0.1:${port}/api/lectures/${lecture.id}`,{headers:{Authorization:`Bearer ${token}`}});
+  assert.equal(owned.status,200);
+  assert.match((await owned.json()).transcript,/authorized transcript/);
+  const anonymous=await fetch(`http://127.0.0.1:${port}/api/lectures/${lecture.id}`);
+  assert.equal(anonymous.status,401);
+  const second=await fetch(`http://127.0.0.1:${port}/api/auth/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'other@example.com',password:'another-long-test-password'})});
+  const otherToken=(await second.json()).token;
+  const crossAccount=await fetch(`http://127.0.0.1:${port}/api/lectures/${lecture.id}`,{headers:{Authorization:`Bearer ${otherToken}`}});
+  assert.equal(crossAccount.status,404);
+  await new Promise(resolve => server.close(resolve));
+});

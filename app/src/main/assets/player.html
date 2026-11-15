@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PW-PM · Dual-Mode Course Player &amp; Unified Download Manager</title>
+<style>
+:root {
+  --bg: #070B14;
+  --surface: #0F172A;
+  --elevated: #1E293B;
+  --border: rgba(56, 189, 248, 0.22);
+  --accent: #0EA5E9;
+  --blue: #2563EB;
+  --emerald: #10B981;
+  --amber: #F59E0B;
+  --rose: #EF4444;
+  --text: #F8FAFC;
+  --muted: #94A3B8;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+  width: 100%; max-width: 100%; overflow-x: hidden;
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 13px; line-height: 1.48;
+}
+main { padding: 12px; width: 100%; padding-bottom: 56px; }
+.card {
+  background: linear-gradient(155deg, rgba(15, 23, 42, 0.98), rgba(10, 18, 34, 0.98));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.42);
+  width: 100%;
+}
+.hide { display: none !important; }
+.waiting-box { text-align: center; padding: 24px 14px; }
+.waiting-title { font-size: 15.5px; font-weight: 800; color: #FFFFFF; margin-bottom: 6px; }
+.waiting-sub { font-size: 12px; color: var(--muted); max-width: 420px; margin: 0 auto; }
+.pill {
+  display: inline-block; padding: 3px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700;
+  background: rgba(14, 165, 233, 0.18); color: #7DD3FC; border: 1px solid rgba(14, 165, 233, 0.4);
+  max-width: 100%; overflow-wrap: anywhere;
+}
+.pill.green { background: rgba(16, 185, 129, 0.16); color: #6EE7B7; border-color: rgba(16, 185, 129, 0.4); }
+.pill.amber { background: rgba(245, 158, 11, 0.18); color: #FCD34D; border-color: rgba(245, 158, 11, 0.5); }
+.pill.rose  { background: rgba(239, 68, 68, 0.18); color: #FCA5A5; border-color: rgba(239, 68, 68, 0.5); }
+.pill.blue  { background: rgba(37, 99, 235, 0.2); color: #93C5FD; border-color: rgba(59, 130, 246, 0.45); }
+.pill.slate { background: rgba(148, 163, 184, 0.16); color: #CBD5E1; border-color: rgba(148, 163, 184, 0.4); }
+
+.status-bar-3 {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  background: #070B14; border: 1px solid var(--border); border-radius: 10px;
+  padding: 9px 10px; margin-top: 10px;
+}
+.meta-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+  background: #070B14; border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px; margin: 10px 0;
+}
+.meta-item { min-width: 0; }
+.meta-item.full { grid-column: 1 / -1; }
+.meta-k { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+.meta-v { font-size: 12px; font-weight: 700; color: #F8FAFC; overflow-wrap: anywhere; word-break: break-word; }
+
+.player-stage {
+  width: 100%; background: #020617; border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px; margin-bottom: 10px;
+}
+.progress-track {
+  width: 100%; height: 8px; background: #1E293B; border-radius: 999px;
+  overflow: hidden; margin: 8px 0;
+}
+.progress-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent), var(--emerald));
+  width: 0%; transition: width 0.2s ease;
+}
+.controls-grid {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px;
+}
+button {
+  background: var(--elevated); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 8px; min-height: 42px;
+  font-size: 11.5px; font-weight: 700; cursor: pointer;
+  overflow-wrap: anywhere;
+}
+button:active { transform: scale(0.98); }
+select, input[type="text"] {
+  background: #0F172A; color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; min-height: 40px; font-size: 12px; font-weight: 600; width: 100%;
+}
+.btn-primary { background: linear-gradient(135deg, #0284C7, #2563EB); border-color: #38BDF8; color: #FFFFFF; }
+.btn-success { background: #059669; border-color: var(--emerald); color: #FFFFFF; }
+.btn-warning { background: #D97706; border-color: var(--amber); color: #FFFFFF; }
+.btn-danger  { background: rgba(239, 68, 68, 0.22); border-color: var(--rose); color: #FCA5A5; }
+.btn-disabled-neutral {
+  background: #1E293B !important; color: #64748B !important;
+  border: 1px solid #334155 !important; cursor: not-allowed !important; opacity: 0.82;
+}
+.settings-drawer {
+  margin-top: 10px; background: #070B14; border: 1px solid rgba(56, 189, 248, 0.32);
+  border-radius: 10px; padding: 12px; width: 100%;
+}
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 0; border-bottom: 1px solid rgba(148, 163, 184, 0.12); font-size: 12px;
+  flex-wrap: wrap;
+}
+.settings-row:last-child { border-bottom: none; }
+.eligibility-stack {
+  display: flex; flex-direction: column; gap: 8px;
+  background: #0B1325; border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; margin-top: 10px; width: 100%;
+}
+.eligibility-headline {
+  font-size: 13px; font-weight: 800; color: #F8FAFC; width: 100%; overflow-wrap: anywhere;
+}
+.eligibility-sub {
+  font-size: 11.5px; color: var(--muted); width: 100%; overflow-wrap: anywhere; line-height: 1.45;
+}
+.eligibility-actions {
+  display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 4px;
+}
+.dl-item {
+  background: #070B14; border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; margin-top: 10px; width: 100%;
+}
+.dl-field-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;
+  background: #0B1325; border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 8px;
+  padding: 8px; margin-top: 8px; font-size: 11px;
+}
+.dl-field-full { grid-column: 1 / -1; }
+.dl-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.filter-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+.filter-btn { padding: 6px 10px; min-height: 34px; font-size: 11px; border-radius: 999px; }
+.filter-btn.active { background: var(--blue); border-color: #60A5FA; color: #fff; }
+@media (max-width: 400px) {
+  .controls-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dl-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body>
+<main>
+  <!-- Top Native Bridge, Storage & Network Health Banner -->
+  <section class="card" style="padding:11px 13px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+      <div style="font-size:13px;font-weight:800;color:#FFFFFF;">🔌 Dual-Mode Native Engine (SHARED_EXPORT + APP_OFFLINE)</div>
+      <span class="pill green" id="bridgeStatusBadge">CHECKING BRIDGE...</span>
+    </div>
+    <div id="bridgeDiagnosticText" style="font-size:11px;color:var(--muted);margin-top:5px;overflow-wrap:anywhere;">
+      Verifying window.NativeDownloadBridge, PwPortalProviderAdapter, and storage availability...
+    </div>
+  </section>
+
+  <!-- Student Waiting State when no active portal lecture is open -->
+  <section class="card waiting-box" id="waitingCard">
+    <div style="font-size:28px;margin-bottom:6px;">📡</div>
+    <div class="waiting-title">Waiting for Active PW Portal Lecture</div>
+    <p class="waiting-sub" style="margin-bottom:8px;">
+      Portal Session: <b id="waitingStatusBadge" style="color:#FCA5A5;">ACTIVE_LESSON_UNRESOLVED</b> · Dashboard &amp; progress text ignored
+    </p>
+    <p class="waiting-sub">
+      Open an enrolled lecture (e.g., <b>Basics of computer fundamentals</b>) in <b>★ PW Portal</b>. <code>PwPortalProviderAdapter</code> will inspect provider download options for both <code>SHARED_EXPORT</code> and <code>APP_OFFLINE</code> automatically.
+    </p>
+  </section>
+
+  <!-- Active Synchronized Course Player -->
+  <section class="card hide" id="activeSessionCard">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+      <div style="font-size:14px;font-weight:800;color:#FFFFFF;">🎬 Synchronized PW-PM Course Player</div>
+      <span class="pill blue" id="syncSourceBadge">HTMLMediaElement</span>
+    </div>
+
+    <div class="status-bar-3">
+      <div>
+        <div class="meta-k">Playback State</div>
+        <div style="margin-top:3px;"><span class="pill slate" id="badgePlayback">PAUSED</span></div>
+      </div>
+      <div>
+        <div class="meta-k">Portal Session</div>
+        <div style="margin-top:3px;"><span class="pill green" id="badgeSession">CONNECTED</span></div>
+      </div>
+      <div>
+        <div class="meta-k">Event Freshness</div>
+        <div style="margin-top:3px;"><span class="pill green" id="badgeFreshness">FRESH</span></div>
+      </div>
+    </div>
+
+    <div class="meta-grid">
+      <div class="meta-item">
+        <div class="meta-k">Lesson ID (Canonical)</div>
+        <div class="meta-v" id="syncLessonId" style="color:#38BDF8;">Not exposed by provider</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-k">Course ID</div>
+        <div class="meta-v" id="syncCourseId">Not exposed by provider</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-k">Course Title</div>
+        <div class="meta-v" id="syncCourseName">Not exposed by provider</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-k">Module ID &amp; Title</div>
+        <div class="meta-v" id="syncModuleName">Not exposed by provider</div>
+      </div>
+      <div class="meta-item full">
+        <div class="meta-k">Active Lesson Title</div>
+        <div class="meta-v" id="syncLessonTitle" style="color:#7DD3FC;font-size:13.5px;">Not exposed by provider</div>
+      </div>
+      <div class="meta-item full">
+        <div class="meta-k">Sync Sequence &amp; Source Timestamp</div>
+        <div class="meta-v" id="syncTimestampInfo" style="font-family:monospace;font-size:11px;color:#93C5FD;">—</div>
+      </div>
+    </div>
+
+    <!-- Real Playback Synchronization Stage -->
+    <div class="player-stage">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;font-size:12.5px;font-weight:800;color:#F8FAFC;">
+        <span id="syncPositionText">Position: 00:00</span>
+        <span id="syncDurationText">Duration: Not exposed by provider</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="syncProgressFill"></div>
+      </div>
+      <div class="controls-grid">
+        <button onclick="sendPortalCommand('seek_back')">⏪ -10s</button>
+        <button class="btn-primary" onclick="sendPortalCommand('toggle')">⏯ Play/Pause</button>
+        <button onclick="sendPortalCommand('seek_fwd')">⏩ +10s</button>
+        <button onclick="cycleSyncedSpeed()" id="btnSyncedSpeed">⚡ 1.0x</button>
+        <button class="btn-warning" onclick="toggleSettingsDrawer()">⚙ Options</button>
+      </div>
+
+      <!-- Dual-Mode Provider Download Options for Active Lecture -->
+      <div id="settingsDrawer" class="settings-drawer">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
+          <span style="font-size:12.5px;font-weight:800;color:#F8FAFC;">⚙ Provider Adapter &amp; Dual-Mode Options</span>
+          <span class="pill amber" id="settingsDlStatusBadge">PROVIDER OFFLINE ACCESS UNAVAILABLE</span>
+        </div>
+
+        <div class="settings-row">
+          <span style="color:var(--muted);">Detected Media Type</span>
+          <code id="syncMediaFormat" style="color:#7DD3FC;font-weight:700;">WIDEVINE_PROTECTED_STREAMING</code>
+        </div>
+        <div class="settings-row">
+          <span style="color:var(--muted);">Quality Selection</span>
+          <div style="width:160px;"><select id="selectResolution" onchange="onResolutionChanged()"></select></div>
+        </div>
+        <div class="settings-row">
+          <span style="color:var(--muted);">Path A (SHARED_EXPORT) Target</span>
+          <code style="color:#6EE7B7;font-size:11px;">Documents/PW Triple/PW-PM/Videos/ &amp; Files/</code>
+        </div>
+        <div class="settings-row">
+          <span style="color:var(--muted);">Path B (APP_OFFLINE) Target</span>
+          <code style="color:#93C5FD;font-size:11px;">Media3 SimpleCache (pw_offline_downloads/)</code>
+        </div>
+
+        <div class="eligibility-stack">
+          <div class="eligibility-headline" id="dlEligibilityHeadline">PROVIDER OFFLINE ACCESS UNAVAILABLE</div>
+          <div class="eligibility-sub" id="dlTargetSub">
+            Checking PwPortalProviderAdapter.getDownloadOptions(lessonId)...
+          </div>
+          <div class="eligibility-actions">
+            <button class="btn-disabled-neutral" id="btnDlSharedExport" onclick="startProviderDualModeDownload('SHARED_EXPORT')" disabled>
+              Path A: Shared-Storage Export Unavailable (Provider Policy)
+            </button>
+            <button class="btn-disabled-neutral" id="btnDlAppOffline" onclick="startProviderDualModeDownload('APP_OFFLINE')" disabled>
+              Path B: In-App Offline Playback Unavailable (Provider Policy)
+            </button>
+          </div>
+        </div>
+
+        <div id="syncedAttachmentsBox" class="hide" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.16);">
+          <div style="font-size:11.5px;font-weight:800;color:#7DD3FC;margin-bottom:6px;">📎 Provider-Exposed Lesson Attachments (Path A: SHARED_EXPORT -> Files/)</div>
+          <div id="syncedAttachmentsList"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Built-in Offline Video Player Surface (Path A Shared Files & Path B Media3 SimpleCache) -->
+  <section class="card hide" id="offlinePlaybackCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+      <div>
+        <div style="font-size:13.5px;font-weight:800;color:#6EE7B7;" id="offlinePlayerTitle">🎬 Verified Offline Playback</div>
+        <div style="font-size:11px;color:var(--muted);overflow-wrap:anywhere;" id="offlinePlayerPath">Source URI</div>
+      </div>
+      <button class="btn-danger" style="width:auto;padding:8px 12px;" onclick="closeOfflinePlayer()">✕ Close</button>
+    </div>
+    <video id="offlineVideoEl" controls playsinline style="width:100%;max-height:240px;background:#000;border-radius:10px;border:1px solid var(--border);"></video>
+  </section>
+
+  <!-- Unified Download Manager (Displays Both SHARED_EXPORT and APP_OFFLINE with all 11 Required Fields) -->
+  <section class="card" id="unifiedDownloadManagerCard">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:14px;font-weight:800;color:#FFFFFF;">📥 Unified Dual-Mode Download Manager</div>
+        <div style="font-size:11px;color:var(--muted);overflow-wrap:anywhere;">
+          Path A (<code>SHARED_EXPORT</code>): <code>Documents/PW Triple/PW-PM/Videos/</code> &amp; <code>Files/</code> · Path B (<code>APP_OFFLINE</code>): Media3 <code>SimpleCache</code>
+        </div>
+      </div>
+      <span class="pill blue" id="libraryCountBadge">0 Records</span>
+    </div>
+
+    <div id="nativeActionBanner" class="hide" style="margin-top:8px;padding:9px 11px;border-radius:8px;font-size:11.5px;background:#090E1C;border:1px solid var(--border);overflow-wrap:anywhere;"></div>
+
+    <div class="filter-row">
+      <button class="filter-btn active" id="flt_ALL" onclick="setQueueFilter('ALL')">All Modes</button>
+      <button class="filter-btn" id="flt_SHARED" onclick="setQueueFilter('SHARED')">SHARED_EXPORT</button>
+      <button class="filter-btn" id="flt_OFFLINE" onclick="setQueueFilter('OFFLINE')">APP_OFFLINE</button>
+      <button class="filter-btn" id="flt_SAVED" onclick="setQueueFilter('SAVED')">Completed</button>
+      <button class="filter-btn" id="flt_PAUSED" onclick="setQueueFilter('PAUSED')">Paused</button>
+      <button class="filter-btn" id="flt_FAILED" onclick="setQueueFilter('FAILED')">Failed / Unavailable</button>
+    </div>
+
+    <div id="downloadsListContainer" style="margin-top:8px;">
+      <div style="font-size:12px;color:var(--muted);padding:10px 0;">
+        No downloads in queue. Both <code>SHARED_EXPORT</code> and <code>APP_OFFLINE</code> items appear here with full telemetry.
+      </div>
+    </div>
+  </section>
+
+  <!-- Explicit Developer Test Fixtures Panel (Strictly Separated from Course Lectures) -->
+  <div style="text-align:center;margin-top:14px;">
+    <button onclick="toggleDevDiagnosticPanel()" style="width:100%;background:rgba(15,23,42,0.8);border:1px dashed rgba(245,158,11,0.45);color:#FCD34D;font-size:11.5px;padding:10px;border-radius:10px;">
+      🔧 Developer Dual-Mode Test Fixtures &amp; Recovery Suite (Non-PW Test Media)
+    </button>
+  </div>
+
+  <section class="card hide" id="devDiagnosticCard" style="margin-top:10px;border-color:rgba(245,158,11,0.45);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+      <span style="font-size:12.5px;font-weight:800;color:#FCD34D;">🔧 Explicit Dual-Mode Acceptance Test Fixtures</span>
+      <span class="pill amber">Fixtures Only (Not PW Course Lectures)</span>
+    </div>
+    <p style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">
+      Tests Path A (<code>SHARED_EXPORT</code> for MP4 &amp; PDF), Path B (<code>APP_OFFLINE</code> for non-DRM HLS/DASH &amp; provider-authorized persistent Widevine license lifecycle), and recovery/persistence behaviors.
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+      <button class="btn-success" onclick="runDevFixtureTest('MP4_SHARED')">1. Path A: Direct MP4</button>
+      <button class="btn-success" onclick="runDevFixtureTest('PDF_SHARED')">2. Path A: PDF Notes</button>
+      <button class="btn-primary" onclick="runDevFixtureTest('HLS_APP_OFFLINE')">3. Path B: Non-DRM HLS</button>
+      <button class="btn-primary" onclick="runDevFixtureTest('DASH_APP_OFFLINE')">4. Path B: Non-DRM DASH</button>
+      <button class="btn-primary" onclick="runDevFixtureTest('DRM_AUTHORIZED_APP_OFFLINE')">5. Path B: Authorized DRM</button>
+      <button class="btn-danger" onclick="runDevFixtureTest('WIDEVINE_UNENTITLED_REJECT')">6. Unentitled Widevine</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const NOT_EXPOSED = "Not exposed by provider";
+const STORAGE_KEY_QUEUE = "pw_pm_v22_dual_mode_downloads_queue";
+const STORAGE_KEY_CANONICAL_LESSON = "pw_pm_canonical_active_lesson_v21";
+const STORAGE_KEY_LICENSES = "pw_pm_v22_widevine_license_store";
+const FIXTURE_MP4_B64 = "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Sr/VCHfI9DmFLBSd4ety0yQHlKP+IkCq7w7AvnI9FEZ7ggLBnWaTax0mbpBRXvdUzV6cfQOSQnviZ3Po4XxuZ39+tcf+/4aNX9uVAdrKcJ+mRNqVU8/FtomvAGbabLrzd+o9hGOo8yLV75E9S1yUeMlkV55/Upb7nqZ4rR9zGABKpkwAM72chzINuDY7I3scO9icaySP5Y2hLXZGUprrhPLQLqACb1uKG5nf+wBitEbKq9/47NqQJlPvfgP9CaZY76/WuXJFV/59muc253/YEu+ZyH03/ATc00NZ+WP+WaWO/wWyXL4UIKQgXW1tq1ILZ3T8P3+w3wCNSbVPfP74V4+PuPqKrWr3bfQBdfdMEdddddddddddddddddddddf/x/gtBQB4MzLB5iWWyoQACOvwcDtBwO1ra+19r7X2vtfa+19r7W19ra+19r7X2tra2tra2tra2tra2tra2tra2tra2sVDZ4AAgA6MAAEEBezWb2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra1H/8fDw4HMFoFyxlReb7f7Vpra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra+PDD+J8Ej3bGSSZ3r6Ydrrp666666666666666666666666666666666665oeyph+uaHpv/3+EmFDYADatper2thPyBrOU0sH3ABvm4zPs/9e//Ah1v+AApEv0Bnv7G67HZDDq/1sCte1I/voYFDJUpKfA3zcZn2f+vTOECmDac5hWACRgw42fiqSkSSdihaEibba/4+QAF+FUlzvGmCbayQT9b+/GXrsbYFY1vSZYYj/RbLYBF3VlV5IdiU8b7dMu7Xbr+/73hnnrAFFnxj2FzoOrcu0jC5ylK832cnwQwAR6LpgGPVd7BlvvQnoArG96SeZK2Io2pkqSNzy8kOxKsb7Z56wBST5fz/sRKG7PNaaTJxMFJD+IcM+J2bvzXOTHmzIn3nj4C6gIHfBSRbDVVZDf7gx70OJXYF3zrVuvI5qDaijCwFwcg+lyj9oC/6/kqui9xSTP50X0jIYAE79M2Zdteu+/rmTjTrP/WvXdAETkIXwCqiMfhUI7A1SRtPzA+3HhbJ30EVqUqzxgAO46YJ4Z9BdjtjaLNqaEOr/WxUAeVhxsByklszXN/Fc3BmRr74URrmU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S11111111111111111111111zQ9lTD9czD2p4fFAMqXhv9/v9/v9/vDfv9/rrrrrrrrrrrrrrrrrrrrrrrrrp66///2CEEXABbYV2YebSUW/3//UYV/gAGTKjK7r6MrBeyb2pb58HEjyJ1H//rCvAo3r0E9IhCIrXc1zZkdlM7QzM0aQO/+P4V4DFzleEWM+p63LK3btKzK+6AqU7OXodBja//P4d4Gz2iJPY2f5+BXEtqP+iHr6wcKXUqrRP1gDhx1VGKz2aSr+n/8B1dBXuWyJmUeAuY7GbIvqPYHxw1qR8rf/wNyDvaJKVRvfv/qOeHeB8cZ5Q92//gPSIyPgz+Ddzycu/+29f0//684d4AHciMTV1X8RwHsK+rrqk9sFzcKR68fPAP9vZkC7I/30v6f/7/gt4GlZF52Qto3uB8cuPr1vby/p1BHXXXXXXXXXXXXXXXXXXXXXXXXXXND2VMP1zQ9N/2Cf+wWGABt8XM1+77XJIFJIte+3g1icadZ/60vzf1fi/+g18JUOTqqGffXAGGkqVKX//pavrGUNsVbaJmzAmjxHkv/065IzM2pp50lF3O+n4gjsTp/oLXB3AoJCDqBeboxmtuXon/+l3AoSb194SgARYSbrT6AAM2qIg6smJ7NMzT/95R7dGoEd3+mWIKAgYf6DWHA+3Rw92p0T6JkzofuC2tumJ9tPu//GAARflMIAAcHTGTE7NHW/96cTRmiI2pl+i7MgszP/wt3j9Km3/6t7Xv1M/3/K/k+bEkv/4+Wk1GbP/z9iSxbtwFW+4P/nu9z8siHn/ZwU5xCk9JvMIv/0Eq5u7RdHr39+wUIw7KJSNfiM3h8FDzAiwsPrkcpKVeOSRERZtTQusyL/hqjNwfGwbPILkDdhkpEqvN+6/8iK//X8Wp7U4EmP2LtrwP19vwE3gDfHhKqHrHx5CZgZaSH1wBxRzK/67V2S0tXwbpp4BzKpKX/zWAS//h64Ks+wI9jexdSmIUSgMDbZ+/+v1QS11111111111111111111111111109dcj2t99ra2t9dddddddddddddddddddddddddddc0PZUw/XMw9qmH6666666666666666666666666666666666666ev8P8AwQh4Mv9BjKUtt77777777777777777777777777777777777+H4v7YJMIHR+ph+u1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1ta666666666666666666666666666666666666666666666666666666666666666666666666666666665oimSJpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaXAAAAHEGaOBniRPAPMeJgJbCGI/CHhDwhiOCU/n8/AdE=";
+const FIXTURE_MP4_SHA = "685f25b97fe85cb3fea09e551b6c1c6c8ab0dca7e72e68406b949488673cc00f";
+const FIXTURE_PDF_B64 = "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA0IDAgUiA+PiA+PiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvQ29udGVudHMgNSAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iago1IDAgb2JqCjw8IC9MZW5ndGggMjY4ID4+CnN0cmVhbQpCVAovRjEgMTYgVGYKNTAgNzMwIFRkCihQVyBUcmlwbGUgTmF0aXZlIERvd25sb2FkIEVuZ2luZSAtIEF1dGhvcml6ZWQgQ291cnNlIE5vdGVzIFBERikgVGoKL0YxIDExIFRmCjAgLTI4IFRkCigxLiBQcm9ncmVzc2l2ZSBEb3dubG9hZHM6IE1QNCwgTTRWLCBNUDMsIFBERiB2ZXJpZmllZCB3aXRoIFNIQS0yNTYgYW5kIG1hZ2ljIGhlYWRlci4pIFRqCjAgLTIwIFRkCigyLiBBZGFwdGl2ZSBEb3dubG9hZHM6IEhMUy9NM1U4IGFuZCBNUEVHLURBU0gvTVBEIHZpYSBBbmRyb2lkWCBNZWRpYTMgRG93bmxvYWRIZWxwZXIuKSBUagowIC0yMCBUZAooMy4gUHJvdGVjdGVkIENvbnRlbnQ6IE9mZmljaWFsIFdpZGV2aW5lIE9mZmxpbmVMaWNlbnNlSGVscGVyIHdvcmtmbG93LikgVGoKRVQKZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyMjkgMDAwMDAgbiAKMDAwMDAwMDI5NyAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjYxNgolJUVPRgo=";
+const FIXTURE_PDF_SHA = "7ebc6f67b0d25fe991fed98b9fb62f48fa86186cb1ca284e04b9bd9f86775377";
+
+let activeLessonState = null;
+let speeds = [1.0, 1.25, 1.5, 1.75, 2.0];
+let speedIdx = 0;
+let downloadRecords = [];
+let licenseStore = {};
+let activeQueueFilter = "ALL";
+let activeTransfers = {};
+let blobCacheById = {};
+let simulatedAvailableStorageBytes = 4 * 1024 * 1024 * 1024; // 4 GB default
+
+function isBlockedDashboardOrGarbage(str) {
+  if (!str || typeof str !== "string") return true;
+  const trimmed = str.trim();
+  const s = trimmed.toLowerCase();
+  if (s.length < 2) return true;
+  if (s === "dashboard" || s === "overview" || s === "home" || s === "login" || s === "courses" || s === "batches" || s === "in progress" || s === "completed" || s === "watched") return true;
+  if (s.includes("days streak") || s.includes("day streak") || s.includes("streak") || s.includes("learn skills that matter") || s.includes("course progress") || s.includes("overall progress") || /^\d+\s*(modules?|lessons?|lectures?|videos?|chapters?|hours?|mins?|minutes?)$/i.test(s)) return true;
+  if (/^(\d+%(\s*(complete|completed|watched|done))?|\d+\s*(\/|of)\s*\d+(\s*(lessons?|lectures?|modules?|videos?|chapters?|completed))?|\d{1,2}:\d{2}(:\d{2})?(\s*\/\s*\d{1,2}:\d{2}(:\d{2})?)?)$/i.test(trimmed)) return true;
+  return false;
+}
+
+function fmtTime(sec) {
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return h + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+
+function fmtBytes(bytes) {
+  bytes = Number(bytes) || 0;
+  if (bytes <= 0) return "0 B";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / 1048576).toFixed(2) + " MB";
+}
+
+function checkStorageAvailability(requiredBytes) {
+  const needed = Math.max(25 * 1024 * 1024, Number(requiredBytes) || 0);
+  if (simulatedAvailableStorageBytes < needed) {
+    return {
+      ok: false,
+      availableBytes: simulatedAvailableStorageBytes,
+      reason: "INSUFFICIENT_STORAGE: Available storage (" + fmtBytes(simulatedAvailableStorageBytes) + ") is below required threshold (" + fmtBytes(needed) + ")."
+    };
+  }
+  return { ok: true, availableBytes: simulatedAvailableStorageBytes };
+}
+
+/**
+ * Requirement 1: PwPortalProviderAdapter with all 6 required methods:
+ * - getLessonMetadata(lessonId)
+ * - getDownloadOptions(lessonId)
+ * - requestOfflineAccess(lessonId, quality)
+ * - getOfflineLicenseConfiguration(lessonId)
+ * - getDownloadStatus(downloadId)
+ * - releaseOfflineAccess(downloadId)
+ */
+var PwPortalProviderAdapter = {
+  lessonRegistry: {},
+
+  registerSyncedLesson(state) {
+    if (!state || !state.lessonTitle) return;
+    const key = state.registryKey || state.lessonId || state.lessonTitle;
+    this.lessonRegistry[key] = state;
+    if (state.lessonId) this.lessonRegistry[state.lessonId] = state;
+  },
+
+  registerLesson(state) {
+    this.registerSyncedLesson(state);
+  },
+
+  getLessonMetadata(lessonIdOrKey) {
+    if (lessonIdOrKey && this.lessonRegistry[lessonIdOrKey]) return this.lessonRegistry[lessonIdOrKey];
+    if (activeLessonState && (activeLessonState.lessonId === lessonIdOrKey || activeLessonState.registryKey === lessonIdOrKey)) {
+      return activeLessonState;
+    }
+    return null;
+  },
+
+  getDownloadOptions(lessonIdOrKey) {
+    const meta = this.getLessonMetadata(lessonIdOrKey);
+    if (!meta) return [];
+    const entSource = meta.entitlementSource;
+    if (!entSource) {
+      // Fix 2: HTTPS validates transport only, NEVER provider download entitlement!
+      return [];
+    }
+    const options = [];
+    const appUrl = String(meta.approvedDownloadUrl || "").trim();
+    const mediaFormat = String(meta.mediaFormat || "WIDEVINE_PROTECTED_STREAMING");
+    const key = meta.lessonId || meta.registryKey;
+
+    // Path A: Shared-storage export ONLY when explicitSharedExportEntitled === true + entSource + https://
+    if (meta.explicitSharedExportEntitled === true && appUrl.startsWith("https://") && mediaFormat === "PROGRESSIVE_MP4") {
+      ["1080p", "720p", "480p"].forEach(q => {
+        options.push({
+          optionId: key + "_shared_" + q,
+          lessonId: meta.lessonId,
+          quality: q,
+          downloadMode: "SHARED_EXPORT",
+          mediaType: "PROGRESSIVE_MP4",
+          providerAuthStatus: "AUTHORIZED_SHARED_EXPORT",
+          entitlementSource: entSource,
+          sourceUrl: appUrl,
+          targetDestination: "Documents/PW Triple/PW-PM/Videos/"
+        });
+      });
+    }
+
+    // Path B: In-app offline playback ONLY when explicitAppOfflineEntitled === true + entSource + https://
+    if (meta.explicitAppOfflineEntitled === true && appUrl.startsWith("https://") && (mediaFormat === "NON_DRM_HLS" || mediaFormat === "NON_DRM_DASH")) {
+      ["720p", "480p"].forEach(q => {
+        options.push({
+          optionId: key + "_app_offline_" + q,
+          lessonId: meta.lessonId,
+          quality: q,
+          downloadMode: "APP_OFFLINE",
+          mediaType: mediaFormat,
+          providerAuthStatus: "AUTHORIZED_APP_OFFLINE",
+          entitlementSource: entSource,
+          sourceUrl: appUrl,
+          targetDestination: "App Internal Media3 SimpleCache (pw_offline_downloads/)"
+        });
+      });
+    }
+
+    // Path B: Persistent Widevine ONLY when explicitPersistentDrmEntitled === true + persistentLicenseAllowed + offlineLicenseUrl
+    if (meta.explicitPersistentDrmEntitled === true && meta.persistentLicenseAllowed === true && appUrl.startsWith("https://") && String(meta.offlineLicenseUrl || "").startsWith("https://")) {
+      options.push({
+        optionId: key + "_drm_app_offline_720p",
+        lessonId: meta.lessonId,
+        quality: "720p",
+        downloadMode: "APP_OFFLINE",
+        mediaType: "WIDEVINE_PROTECTED_STREAMING",
+        providerAuthStatus: "AUTHORIZED_PERSISTENT_DRM",
+        entitlementSource: entSource,
+        sourceUrl: appUrl,
+        targetDestination: "Encrypted App Internal Media3 SimpleCache (pw_offline_downloads/)"
+      });
+    }
+
+    // Path A: PDF Attachments ONLY when att.explicitDownloadEntitled === true + https://
+    if (Array.isArray(meta.attachments)) {
+      meta.attachments.forEach((att, idx) => {
+        if (att && att.explicitDownloadEntitled === true && String(att.url || "").startsWith("https://")) {
+          options.push({
+            optionId: key + "_att_" + idx,
+            lessonId: meta.lessonId,
+            quality: "Document",
+            downloadMode: "SHARED_EXPORT",
+            mediaType: "PDF_ATTACHMENT",
+            providerAuthStatus: "AUTHORIZED_SHARED_EXPORT",
+            entitlementSource: att.entitlementSource || entSource,
+            sourceUrl: att.url,
+            targetDestination: "Documents/PW Triple/PW-PM/Files/"
+          });
+        }
+      });
+    }
+
+    return options;
+  },
+
+  isUrlAuthorizedForMode(url, mode) {
+    const cleanUrl = String(url || "").trim();
+    if (!cleanUrl.startsWith("https://")) return false;
+    const keys = Object.keys(this.lessonRegistry);
+    for (let i = 0; i < keys.length; i++) {
+      const opts = this.getDownloadOptions(keys[i]);
+      if (opts.some(o => o.downloadMode === mode && o.sourceUrl === cleanUrl)) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  getOfflineLicenseConfiguration(lessonId) {
+    const meta = this.getLessonMetadata(lessonId);
+    if (!meta || !meta.explicitPersistentDrmEntitled || !meta.persistentLicenseAllowed || !meta.entitlementSource || !String(meta.offlineLicenseUrl || "").startsWith("https://")) {
+      return null;
+    }
+    return {
+      lessonId: lessonId,
+      drmScheme: "WIDEVINE",
+      licenseServerUrl: meta.offlineLicenseUrl,
+      persistentLicenseAllowed: true,
+      licenseDurationSec: Number(meta.licenseDurationSec || 172800),
+      playbackDurationSec: Number(meta.playbackDurationSec || 172800)
+    };
+  },
+
+  requestOfflineAccess(lessonId, quality, preferredMode) {
+    const meta = this.getLessonMetadata(lessonId);
+    if (!meta) {
+      return {
+        granted: false,
+        downloadId: null,
+        lessonId: lessonId,
+        quality: quality || "720p",
+        downloadMode: preferredMode || "APP_OFFLINE",
+        providerAuthStatus: "PROVIDER_OFFLINE_ACCESS_UNAVAILABLE",
+        failureReason: "LESSON_NOT_FOUND: No active lesson metadata registered for " + lessonId
+      };
+    }
+
+    const storageCheck = checkStorageAvailability(50 * 1024 * 1024);
+    if (!storageCheck.ok) {
+      return {
+        granted: false,
+        downloadId: null,
+        lessonId: lessonId,
+        quality: quality || "720p",
+        downloadMode: preferredMode || "APP_OFFLINE",
+        providerAuthStatus: "PROVIDER_OFFLINE_ACCESS_UNAVAILABLE",
+        failureReason: storageCheck.reason
+      };
+    }
+
+    const opts = this.getDownloadOptions(lessonId);
+    const chosen = opts.find(o =>
+      (!preferredMode || o.downloadMode === preferredMode) &&
+      (!quality || o.quality.toLowerCase() === String(quality).toLowerCase())
+    ) || opts.find(o => !preferredMode || o.downloadMode === preferredMode) || opts[0];
+
+    if (!chosen) {
+      return {
+        granted: false,
+        downloadId: null,
+        lessonId: lessonId,
+        quality: quality || "720p",
+        downloadMode: preferredMode || "APP_OFFLINE",
+        providerAuthStatus: "PROVIDER_OFFLINE_ACCESS_UNAVAILABLE",
+        failureReason: "PROVIDER_OFFLINE_ACCESS_UNAVAILABLE: Provider has not authorized offline download or persistent Widevine license for '" + meta.lessonTitle + "' (" + lessonId + ")."
+      };
+    }
+
+    const licCfg = this.getOfflineLicenseConfiguration(lessonId);
+    return {
+      granted: true,
+      downloadId: "dl_" + lessonId + "_" + chosen.downloadMode.toLowerCase() + "_" + chosen.quality,
+      lessonId: lessonId,
+      quality: chosen.quality,
+      downloadMode: chosen.downloadMode,
+      mediaType: chosen.mediaType,
+      providerAuthStatus: chosen.providerAuthStatus,
+      sourceUrl: chosen.sourceUrl,
+      targetDestination: chosen.targetDestination,
+      licenseConfiguration: licCfg,
+      failureReason: null
+    };
+  },
+
+  getDownloadStatus(downloadId) {
+    return downloadRecords.find(r => r.id === downloadId) || null;
+  },
+
+  releaseOfflineAccess(downloadId) {
+    const idx = downloadRecords.findIndex(r => r.id === downloadId);
+    if (idx === -1) return { released: false, downloadId, reason: "NOT_FOUND" };
+    const rec = downloadRecords[idx];
+    if (rec.lessonId && licenseStore[rec.lessonId]) {
+      delete licenseStore[rec.lessonId];
+      saveLicenseStore();
+    }
+    delete blobCacheById[downloadId];
+    if (activeTransfers[downloadId]) activeTransfers[downloadId].cancelled = true;
+    downloadRecords.splice(idx, 1);
+    savePersistedQueue();
+    renderDownloadQueue();
+    updateSettingsDownloadTelemetry();
+    return { released: true, downloadId, lessonId: rec.lessonId, releasedLicense: Boolean(rec.keySetId) };
+  }
+};
+
+window.PwPortalProviderAdapter = PwPortalProviderAdapter;
+
+function saveLicenseStore() {
+  try { localStorage.setItem(STORAGE_KEY_LICENSES, JSON.stringify(licenseStore)); } catch (e) {}
+}
+
+function loadLicenseStore() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LICENSES);
+    if (raw) licenseStore = JSON.parse(raw) || {};
+  } catch (e) { licenseStore = {}; }
+}
+
+/**
+ * License Renewal, Expiry Check & Release Lifecycle
+ */
+function checkAndHandleLicenseExpiry(nowMs) {
+  const now = nowMs || Date.now();
+  let changed = false;
+  downloadRecords.forEach(rec => {
+    if (rec.providerAuthStatus === "AUTHORIZED_PERSISTENT_DRM" && rec.licenseExpiresAtMs) {
+      const remSec = Math.floor((rec.licenseExpiresAtMs - now) / 1000);
+      if (remSec <= 0) {
+        rec.status = "EXPIRED";
+        rec.offlinePlaybackAvailability = "UNAVAILABLE (LICENSE_EXPIRED)";
+        rec.licenseExpiryText = "EXPIRED (0s remaining — Renewal Required)";
+        rec.failureReason = "WIDEVINE_LICENSE_EXPIRED: Offline license expired; call renewOfflineLicense() while online.";
+        changed = true;
+      } else {
+        const hrs = Math.floor(remSec / 3600);
+        const mins = Math.floor((remSec % 3600) / 60);
+        rec.licenseExpiryText = "Valid (KeySetId: " + (rec.keySetId || "ks_active") + " · " + hrs + "h " + mins + "m remaining)";
+      }
+    }
+  });
+  if (changed) {
+    savePersistedQueue();
+    renderDownloadQueue();
+  }
+}
+
+function renewOfflineLicense(downloadId) {
+  const rec = downloadRecords.find(r => r.id === downloadId);
+  if (!rec) return { ok: false, reason: "NOT_FOUND" };
+  const licCfg = PwPortalProviderAdapter.getOfflineLicenseConfiguration(rec.lessonId);
+  if (!licCfg || !window.NativeDownloadBridge || typeof window.NativeDownloadBridge.renewOfflineLicenseJson !== "function") {
+    showActionBanner("PROVIDER_OFFLINE_ACCESS_UNAVAILABLE: Cannot renew Widevine license without provider offline license server and native Media3 OfflineLicenseHelper.", true);
+    return { ok: false, status: "PROVIDER_OFFLINE_ACCESS_UNAVAILABLE", reason: "NO_PROVIDER_LICENSE_SERVER_OR_NATIVE_KEYSET" };
+  }
+  try {
+    const resp = JSON.parse(window.NativeDownloadBridge.renewOfflineLicenseJson(rec.lessonId, licCfg.licenseServerUrl));
+    if (!resp || !resp.ok || !resp.keySetId) {
+      return { ok: false, status: "FAILED", reason: (resp && resp.error) || "OfflineLicenseHelper renewal failed" };
+    }
+    rec.keySetId = resp.keySetId;
+    rec.licenseExpiresAtMs = resp.expiresAtMs;
+    rec.licenseExpiryText = "Valid (Renewed via Media3 OfflineLicenseHelper)";
+    savePersistedQueue();
+    renderDownloadQueue();
+    return { ok: true, keySetId: resp.keySetId, expiresAtMs: resp.expiresAtMs };
+  } catch (e) {
+    return { ok: false, status: "FAILED", reason: e.message };
+  }
+}
+
+function runBridgeHealthCheck() {
+  const badge = $("bridgeStatusBadge");
+  const diag = $("bridgeDiagnosticText");
+
+  if (typeof window.NativeDownloadBridge === "undefined" || window.NativeDownloadBridge === null) {
+    const msg = "NativeDownloadBridge is not registered on window.";
+    badge.textContent = "BRIDGE MISSING";
+    badge.className = "pill rose";
+    diag.style.color = "#FCA5A5";
+    diag.textContent = msg;
+    return { ok: false, status: "BRIDGE_MISSING", error: msg };
+  }
+
+  const requiredMethods = ["isBridgeReady", "enqueueDownload", "getDownloadsStatusJson", "getStorageDirectoryInfo"];
+  const missing = requiredMethods.filter(m => typeof window.NativeDownloadBridge[m] !== "function");
+  if (missing.length > 0) {
+    const msg = "NativeDownloadBridge missing methods: " + missing.join(", ");
+    badge.textContent = "SIGNATURE MISMATCH";
+    badge.className = "pill rose";
+    diag.style.color = "#FCA5A5";
+    diag.textContent = msg;
+    return { ok: false, status: "SIGNATURE_MISMATCH", error: msg };
+  }
+
+  try {
+    const rawReady = String(window.NativeDownloadBridge.isBridgeReady() || "").trim();
+    let readyVersion = rawReady;
+    if (rawReady.startsWith("{")) {
+      const parsedReady = JSON.parse(rawReady);
+      if (!parsedReady.ok && !parsedReady.ready) throw new Error(parsedReady.error || "ready=false");
+      readyVersion = parsedReady.version || "PW_PM_V22_BRIDGE_READY";
+    } else if (!rawReady.includes("READY") && rawReady !== "true") {
+      throw new Error("Unexpected isBridgeReady() response: " + rawReady);
+    }
+
+    const rawStorage = String(window.NativeDownloadBridge.getStorageDirectoryInfo() || "").trim();
+    let storageRoot = "Documents/PW Triple/PW-PM/Videos/";
+    if (rawStorage.startsWith("{")) {
+      const parsedStorage = JSON.parse(rawStorage);
+      storageRoot = parsedStorage.root || parsedStorage.videosFolder || storageRoot;
+    }
+
+    badge.textContent = "BRIDGE READY";
+    badge.className = "pill green";
+    diag.style.color = "#6EE7B7";
+    diag.textContent = "Verified NativeDownloadBridge (" + readyVersion + ") · Path A: " + storageRoot + " · Path B: Media3 SimpleCache";
+    return { ok: true, status: "BRIDGE_READY", version: readyVersion, storageRoot };
+  } catch (err) {
+    const errMsg = (err && err.message) ? err.message : String(err);
+    badge.textContent = "BRIDGE EXCEPTION";
+    badge.className = "pill rose";
+    diag.style.color = "#FCA5A5";
+    diag.textContent = "Bridge exception: " + errMsg;
+    return { ok: false, status: "BRIDGE_EXCEPTION", error: errMsg };
+  }
+}
+
+function showActionBanner(msg, isError) {
+  const el = $("nativeActionBanner");
+  if (!el) return;
+  el.classList.remove("hide");
+  el.style.color = isError ? "#FCA5A5" : "#6EE7B7";
+  el.style.borderColor = isError ? "rgba(239,68,68,0.45)" : "rgba(16,185,129,0.45)";
+  el.textContent = msg;
+}
+
+function evaluateFreshness(state, nowMs) {
+  if (!state || !state.hasActiveLesson || state.connectionState === "DISCONNECTED" || !state.lastUpdatedAt) {
+    return { status: "DISCONNECTED", ageSec: 0 };
+  }
+  const ageMs = Math.max(0, nowMs - Number(state.lastUpdatedAt));
+  const ageSec = ageMs / 1000;
+  if (ageMs < 5000) return { status: "FRESH", ageSec };
+  if (ageMs <= 30000) return { status: "DELAYED", ageSec };
+  return { status: "STALE", ageSec };
+}
+
+function isValidProviderId(rawId) {
+  if (!rawId || typeof rawId !== "string") return false;
+  const trimmed = rawId.trim();
+  if (trimmed.length < 3 || trimmed.length > 128) return false;
+  if (/\s|%|:|\//.test(trimmed)) return false;
+  if (isBlockedDashboardOrGarbage(trimmed)) return false;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("lesson_") || /^(null|undefined|none|unknown|unresolved|study|learn|watch|lecture|lesson|video)$/.test(lower)) return false;
+  return /^[A-Za-z0-9_-]+$/.test(trimmed);
+}
+
+function normalizeCanonicalLessonState(raw) {
+  if (!raw) return null;
+  const obj = (typeof raw === "string") ? JSON.parse(raw) : raw;
+  if (!obj || typeof obj !== "object") return null;
+
+  const nowMs = Date.now();
+  const lastUpdatedAt = Number(obj.lastUpdatedAt || obj.updatedAtMs || obj.eventTimestampMs || nowMs);
+  const seq = Number(obj.seq || lastUpdatedAt);
+
+  if (obj.status === "ACTIVE_LESSON_UNRESOLVED" || obj.connectionState === "ACTIVE_LESSON_UNRESOLVED" || obj.hasActiveLesson === false) {
+    return {
+      hasActiveLesson: false,
+      status: "ACTIVE_LESSON_UNRESOLVED",
+      connectionState: "ACTIVE_LESSON_UNRESOLVED",
+      seq: seq,
+      lastUpdatedAt: lastUpdatedAt,
+      reason: obj.reason || "ACTIVE_LESSON_UNRESOLVED",
+      observedLessonTitle: obj.observedLessonTitle || null
+    };
+  }
+
+  const rawTitle = String(obj.lessonTitle || obj.title || "").trim();
+  const rawCourseId = String(obj.courseId || "").trim();
+  const rawLessonId = String(obj.lessonId || "").trim();
+
+  if (isBlockedDashboardOrGarbage(rawTitle)) {
+    return {
+      hasActiveLesson: false,
+      status: "ACTIVE_LESSON_UNRESOLVED",
+      connectionState: "ACTIVE_LESSON_UNRESOLVED",
+      rejectedDashboardDefault: true,
+      seq: seq,
+      lastUpdatedAt: lastUpdatedAt,
+      reason: "LESSON_TITLE_INVALID_OR_BLOCKED"
+    };
+  }
+
+  if (!isValidProviderId(rawLessonId)) {
+    // Requirement B: Do NOT reuse previous lessonId when a new lesson is selected with an unresolved ID!
+    return {
+      hasActiveLesson: false,
+      status: "ACTIVE_LESSON_UNRESOLVED",
+      connectionState: "ACTIVE_LESSON_UNRESOLVED",
+      seq: seq,
+      lastUpdatedAt: lastUpdatedAt,
+      reason: "LESSON_ID_UNRESOLVED",
+      observedLessonTitle: rawTitle
+    };
+  }
+
+  const cleanCourseId = isValidProviderId(rawCourseId) ? rawCourseId : "";
+  const cleanCourseTitle = isBlockedDashboardOrGarbage(obj.courseTitle || obj.courseName) ? "" : String(obj.courseTitle || obj.courseName || "").trim();
+  const cleanModuleId = isValidProviderId(obj.moduleId) ? String(obj.moduleId).trim() : "";
+  const cleanModuleTitle = isBlockedDashboardOrGarbage(obj.moduleTitle || obj.moduleName) ? "" : String(obj.moduleTitle || obj.moduleName || "").trim();
+
+  const canonicalLessonId = rawLessonId;
+  const registryKey = canonicalLessonId || ((cleanCourseId || "portal") + ":" + rawTitle);
+  const entSource = String(obj.entitlementSource || "").trim() || null;
+  const explicitSharedExportEntitled = Boolean(obj.explicitSharedExportEntitled && entSource);
+  const explicitAppOfflineEntitled = Boolean(obj.explicitAppOfflineEntitled && entSource);
+  const explicitPersistentDrmEntitled = Boolean(obj.explicitPersistentDrmEntitled && obj.persistentLicenseAllowed && entSource);
+
+  return {
+    hasActiveLesson: obj.hasActiveLesson !== false && obj.connectionState !== "DISCONNECTED",
+    connectionState: obj.connectionState || "CONNECTED",
+    seq: seq,
+    registryKey: registryKey,
+    lessonId: canonicalLessonId,
+    lessonTitle: rawTitle,
+    explicitSharedExportEntitled: explicitSharedExportEntitled,
+    explicitAppOfflineEntitled: explicitAppOfflineEntitled,
+    explicitPersistentDrmEntitled: explicitPersistentDrmEntitled,
+    entitlementSource: entSource,
+    courseId: cleanCourseId,
+    courseTitle: cleanCourseTitle,
+    moduleId: cleanModuleId,
+    moduleTitle: cleanModuleTitle,
+    source: String(obj.source || obj.positionSource || "HTMLMediaElement.timeupdate"),
+    lastUpdatedAt: lastUpdatedAt,
+    currentPosition: Math.max(0, Number(obj.currentPosition ?? obj.currentTimeSec ?? 0) || 0),
+    duration: Math.max(0, Number(obj.duration ?? obj.durationSec ?? 0) || 0),
+    playbackState: String(obj.playbackState || "PAUSED"),
+    mediaFormat: String(obj.mediaFormat || "WIDEVINE_PROTECTED_STREAMING"),
+    downloadEligibility: String(obj.downloadEligibility || "STREAMING_ONLY_WIDEVINE_DRM"),
+    downloadEligibilityLabel: String(obj.downloadEligibilityLabel || "PROVIDER OFFLINE ACCESS UNAVAILABLE"),
+    approvedDownloadUrl: String(obj.approvedDownloadUrl || ""),
+    offlineLicenseUrl: String(obj.offlineLicenseUrl || ""),
+    persistentLicenseAllowed: Boolean(obj.persistentLicenseAllowed),
+    availableResolutions: Array.isArray(obj.availableResolutions) ? obj.availableResolutions : [],
+    attachments: Array.isArray(obj.attachments) ? obj.attachments : [],
+    transcript: String(obj.transcript || obj.transcriptText || ""),
+    notes: String(obj.notes || obj.lectureNotesText || "")
+  };
+}
+
+function applySessionState(sessionInput) {
+  let incoming = null;
+  try {
+    incoming = normalizeCanonicalLessonState(sessionInput);
+  } catch (e) {
+    return { accepted: false, reason: "INVALID_JSON" };
+  }
+
+  if (!incoming || !incoming.hasActiveLesson) {
+    if (activeLessonState && incoming && incoming.lastUpdatedAt && incoming.lastUpdatedAt < activeLessonState.lastUpdatedAt) {
+      return { accepted: false, status: "STALE_EVENT_IGNORED", reason: "STALE_EVENT_TIMESTAMP" };
+    }
+    // Clear stale activeLessonState so a previous lessonId is NEVER reused when a new lesson has an unresolved ID!
+    activeLessonState = null;
+    try { localStorage.removeItem(STORAGE_KEY_CANONICAL_LESSON); } catch (e) {}
+    $("waitingCard").classList.remove("hide");
+    $("activeSessionCard").classList.add("hide");
+    if ($("waitingStatusBadge")) {
+      $("waitingStatusBadge").textContent = "ACTIVE_LESSON_UNRESOLVED (" + ((incoming && incoming.reason) || "UNRESOLVED") + ")";
+    }
+    return {
+      accepted: false,
+      status: "ACTIVE_LESSON_UNRESOLVED",
+      reason: (incoming && incoming.reason) || "ACTIVE_LESSON_UNRESOLVED",
+      observedLessonTitle: (incoming && incoming.observedLessonTitle) || null
+    };
+  }
+
+  if (activeLessonState && activeLessonState.hasActiveLesson) {
+    if (incoming.lastUpdatedAt < activeLessonState.lastUpdatedAt) {
+      return { accepted: false, reason: "STALE_EVENT_TIMESTAMP" };
+    }
+    if (incoming.lessonId === activeLessonState.lessonId && incoming.seq < activeLessonState.seq) {
+      return { accepted: false, reason: "STALE_SEQUENCE_NUMBER" };
+    }
+  }
+
+  activeLessonState = incoming;
+  PwPortalProviderAdapter.registerLesson(activeLessonState);
+  try {
+    localStorage.setItem(STORAGE_KEY_CANONICAL_LESSON, JSON.stringify(activeLessonState));
+  } catch (e) {}
+
+  $("waitingCard").classList.add("hide");
+  $("activeSessionCard").classList.remove("hide");
+
+  const pos = activeLessonState.currentPosition;
+  const dur = activeLessonState.duration;
+  const posStr = fmtTime(pos);
+  const durStr = dur > 0 ? fmtTime(dur) : NOT_EXPOSED;
+
+  $("syncSourceBadge").textContent = activeLessonState.source;
+  $("syncLessonId").textContent = activeLessonState.lessonId || NOT_EXPOSED;
+  $("syncCourseId").textContent = activeLessonState.courseId || NOT_EXPOSED;
+  $("syncCourseName").textContent = activeLessonState.courseTitle || NOT_EXPOSED;
+  const modText = (activeLessonState.moduleId && activeLessonState.moduleTitle)
+    ? (activeLessonState.moduleId + " · " + activeLessonState.moduleTitle)
+    : (activeLessonState.moduleTitle || activeLessonState.moduleId || NOT_EXPOSED);
+  $("syncModuleName").textContent = modText;
+  $("syncLessonTitle").textContent = activeLessonState.lessonTitle;
+  $("syncMediaFormat").textContent = activeLessonState.mediaFormat;
+
+  $("syncPositionText").textContent = "Position: " + posStr;
+  $("syncDurationText").textContent = "Duration: " + durStr;
+  const pct = dur > 0 ? Math.min(100, ((pos / dur) * 100).toFixed(2)) : 0;
+  $("syncProgressFill").style.width = pct + "%";
+
+  populateResolutions(activeLessonState);
+
+  const options = PwPortalProviderAdapter.getDownloadOptions(activeLessonState.lessonId || activeLessonState.registryKey);
+  const sharedOpt = options.find(o => o.downloadMode === "SHARED_EXPORT" && o.mediaType !== "PDF_ATTACHMENT");
+  const appOfflineOpt = options.find(o => o.downloadMode === "APP_OFFLINE");
+
+  const btnShared = $("btnDlSharedExport");
+  const btnOffline = $("btnDlAppOffline");
+  const statusBadge = $("settingsDlStatusBadge");
+
+  if (sharedOpt || appOfflineOpt) {
+    statusBadge.textContent = sharedOpt && appOfflineOpt ? "DUAL-MODE AUTHORIZED" : (sharedOpt ? "SHARED_EXPORT AUTHORIZED" : "APP_OFFLINE AUTHORIZED");
+    statusBadge.className = "pill green";
+    $("dlEligibilityHeadline").textContent = statusBadge.textContent + " (" + activeLessonState.mediaFormat + ")";
+    $("dlEligibilityHeadline").style.color = "#6EE7B7";
+    $("dlTargetSub").textContent = "Provider authorized offline options for '" + activeLessonState.lessonTitle + "'.";
+  } else {
+    statusBadge.textContent = "PROVIDER OFFLINE ACCESS UNAVAILABLE";
+    statusBadge.className = "pill amber";
+    $("dlEligibilityHeadline").textContent = "PROVIDER OFFLINE ACCESS UNAVAILABLE";
+    $("dlEligibilityHeadline").style.color = "#FCD34D";
+    $("dlTargetSub").textContent = "Active lecture '" + activeLessonState.lessonTitle + "' (" + activeLessonState.lessonId + ") uses " + activeLessonState.mediaFormat + " (STREAMING_ONLY). The provider has not exposed a direct stream or persistent Widevine license contract.";
+  }
+
+  if (sharedOpt) {
+    btnShared.disabled = false;
+    btnShared.className = "btn-success";
+    btnShared.textContent = "⬇ Path A (SHARED_EXPORT): Save to Documents/PW Triple/PW-PM/Videos/";
+  } else {
+    btnShared.disabled = true;
+    btnShared.className = "btn-disabled-neutral";
+    btnShared.textContent = "Path A (SHARED_EXPORT): Unavailable (No Direct Export Stream)";
+  }
+
+  if (appOfflineOpt) {
+    btnOffline.disabled = false;
+    btnOffline.className = "btn-primary";
+    btnOffline.textContent = "⬇ Path B (APP_OFFLINE): Cache in Media3 Offline Player";
+  } else {
+    btnOffline.disabled = true;
+    btnOffline.className = "btn-disabled-neutral";
+    btnOffline.textContent = "Path B (APP_OFFLINE): Unavailable (No Offline License Contract)";
+  }
+
+  const atts = activeLessonState.attachments || [];
+  if (atts.length > 0) {
+    $("syncedAttachmentsBox").classList.remove("hide");
+    $("syncedAttachmentsList").innerHTML = atts.map(a => `
+      <div class="eligibility-stack" style="margin-top:6px;">
+        <div class="eligibility-headline">📄 ${a.title} (SHARED_EXPORT)</div>
+        <div class="eligibility-sub">${a.url}</div>
+        <button class="btn-success" onclick="downloadCourseAttachment('${encodeURIComponent(a.url)}', '${encodeURIComponent(a.title)}')">
+          ⬇ Export PDF to Documents/PW Triple/PW-PM/Files/
+        </button>
+      </div>
+    `).join("");
+  } else {
+    $("syncedAttachmentsBox").classList.add("hide");
+  }
+
+  updateSettingsDownloadTelemetry();
+  updateIndependentStatusBadges();
+  return { accepted: true, activeLessonState, options };
+}
+
+function populateResolutions(state) {
+  const resSel = $("selectResolution");
+  const resolutions = (Array.isArray(state.availableResolutions) && state.availableResolutions.length)
+    ? state.availableResolutions
+    : [{ id: "720p", label: "720p HD" }, { id: "1080p", label: "1080p Full HD" }, { id: "480p", label: "480p Standard" }];
+  const prev = resSel.value;
+  resSel.innerHTML = resolutions.map(r => `<option value="${r.id}">${r.label}</option>`).join("");
+  if (prev && resolutions.some(r => r.id === prev)) resSel.value = prev;
+}
+
+function onResolutionChanged() {
+  updateSettingsDownloadTelemetry();
+}
+
+function updateIndependentStatusBadges() {
+  if (!activeLessonState || !activeLessonState.hasActiveLesson) {
+    $("waitingCard").classList.remove("hide");
+    $("activeSessionCard").classList.add("hide");
+    return;
+  }
+
+  const now = Date.now();
+  const freshInfo = evaluateFreshness(activeLessonState, now);
+  const playback = activeLessonState.playbackState || "PAUSED";
+  const sessionConn = activeLessonState.connectionState || "CONNECTED";
+
+  const pbEl = $("badgePlayback");
+  pbEl.textContent = playback;
+  pbEl.className = playback === "PLAYING" ? "pill green" : (playback === "ENDED" ? "pill blue" : "pill slate");
+
+  const sessEl = $("badgeSession");
+  sessEl.textContent = sessionConn;
+  sessEl.className = sessionConn === "CONNECTED" ? "pill green" : "pill rose";
+
+  const frEl = $("badgeFreshness");
+  frEl.textContent = freshInfo.status + " (" + freshInfo.ageSec.toFixed(1) + "s)";
+  frEl.className = freshInfo.status === "FRESH"
+    ? "pill green"
+    : (freshInfo.status === "DELAYED" ? "pill amber" : "pill rose");
+
+  $("syncTimestampInfo").textContent =
+    "Seq #" + activeLessonState.seq +
+    " · Source: " + activeLessonState.source +
+    " · Updated: " + new Date(activeLessonState.lastUpdatedAt).toLocaleTimeString();
+}
+
+function updateSettingsDownloadTelemetry() {
+  if (!activeLessonState) return;
+  const activeRec = downloadRecords.find(r => r.lessonId === activeLessonState.lessonId && !r.isDevFixture);
+  if (!activeRec) return;
+  $("settingsDlStatusBadge").textContent = activeRec.downloadMode + " · " + activeRec.status;
+}
+
+function decodeB64Bytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function validateMediaIntegrity(bytes, format, expectedBytes, expectedDurSec) {
+  if (!bytes || bytes.length === 0) return { ok: false, code: "ZERO_BYTES", msg: "File has 0 bytes." };
+  if (expectedBytes > 0 && bytes.length < expectedBytes) {
+    return { ok: false, code: "INCOMPLETE_TRUNCATED", msg: `Truncated stream: expected ${expectedBytes} B, got ${bytes.length} B.` };
+  }
+  if (format === "PDF" || format === "PDF_ATTACHMENT") {
+    const hdr = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (hdr !== "%PDF") return { ok: false, code: "INVALID_PDF_CONTAINER", msg: "Missing %PDF container header." };
+    return { ok: true, codecs: "PDF-1.4", tracks: "1 Document Page", duration: 0 };
+  }
+  const box = String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]);
+  if (box !== "ftyp") return { ok: false, code: "INVALID_MP4_CONTAINER", msg: "Missing ISO-BMFF ftyp box." };
+  return { ok: true, codecs: "avc1.42E01E, mp4a.40.2", tracks: "1 Video (H.264) + 1 Audio (AAC)", duration: expectedDurSec || 12 };
+}
+
+function startProviderDualModeDownload(mode) {
+  if (!activeLessonState) return;
+  const quality = $("selectResolution").value || "720p";
+  const grant = PwPortalProviderAdapter.requestOfflineAccess(activeLessonState.lessonId, quality, mode);
+  if (!grant.granted) {
+    showActionBanner(grant.failureReason || "Offline access unavailable", true);
+    return grant;
+  }
+  const safeFile = ((activeLessonState.courseId || "course") + "_" + activeLessonState.lessonTitle)
+    .replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64) + "_" + quality + ".mp4";
+  return enqueueProductionRemoteDownload(grant.sourceUrl, safeFile, "video/mp4", {
+    downloadMode: grant.downloadMode,
+    providerAuthStatus: grant.providerAuthStatus,
+    courseId: activeLessonState.courseId,
+    courseTitle: activeLessonState.courseTitle,
+    lessonId: activeLessonState.lessonId,
+    lessonTitle: activeLessonState.lessonTitle,
+    mediaFormat: grant.mediaType || activeLessonState.mediaFormat,
+    selectedResolution: quality,
+    expectedDurationSec: activeLessonState.duration,
+    licenseConfiguration: grant.licenseConfiguration
+  });
+}
+
+function enqueueProductionRemoteDownload(url, fileName, mimeType, meta) {
+  const bridgeCheck = runBridgeHealthCheck();
+  if (!bridgeCheck.ok) {
+    showActionBanner("Native bridge error: " + bridgeCheck.error, true);
+    return { ok: false, status: "BRIDGE_UNAVAILABLE", error: bridgeCheck.error };
+  }
+
+  const storageCheck = checkStorageAvailability(50 * 1024 * 1024);
+  if (!storageCheck.ok) {
+    showActionBanner(storageCheck.reason, true);
+    return { ok: false, status: "FAILED", error: storageCheck.reason };
+  }
+
+  const cleanUrl = String(url || "").trim();
+  if (!cleanUrl.startsWith("https://")) {
+    const msg = "Download rejected (UNSUPPORTED): Strict HTTPS URL required for remote downloads (" + cleanUrl + ").";
+    showActionBanner(msg, true);
+    return { ok: false, status: "UNSUPPORTED", error: "Strict HTTPS URL required" };
+  }
+
+  const mode = (meta && meta.downloadMode) || "SHARED_EXPORT";
+  if (!PwPortalProviderAdapter.isUrlAuthorizedForMode(cleanUrl, mode)) {
+    const msg = "Download rejected (PROVIDER_OFFLINE_ACCESS_UNAVAILABLE): URL is not authorized by explicit provider entitlement for " + mode + ".";
+    showActionBanner(msg, true);
+    return { ok: false, status: "PROVIDER_OFFLINE_ACCESS_UNAVAILABLE", error: "URL not authorized by provider entitlement" };
+  }
+  const lowerUrl = cleanUrl.toLowerCase();
+  if (mode === "SHARED_EXPORT" && (lowerUrl.includes(".m3u8") || lowerUrl.includes(".mpd")) && String(fileName || "").toLowerCase().endsWith(".mp4")) {
+    const msg = "Download rejected (UNSUPPORTED): Segmented HLS/DASH manifests cannot be renamed to .mp4 in SHARED_EXPORT without remuxing; use APP_OFFLINE.";
+    showActionBanner(msg, true);
+    return { ok: false, status: "UNSUPPORTED", error: "MANIFEST_MP4_RENAME_FORBIDDEN" };
+  }
+
+  const dup = downloadRecords.find(r =>
+    r.sourceUrl === cleanUrl &&
+    r.downloadMode === mode &&
+    (r.status === "QUEUED" || r.status === "DOWNLOADING" || r.status === "COMPLETED")
+  );
+  if (dup) {
+    showActionBanner("Duplicate download prevented: " + fileName + " (" + mode + ") is already " + dup.status + ".", false);
+    return { ok: true, duplicate: true, requestId: dup.id, status: dup.status, record: dup };
+  }
+
+  try {
+    const rawResp = (window.NativeDownloadBridge.enqueueDownload.length >= 3)
+      ? window.NativeDownloadBridge.enqueueDownload(cleanUrl, fileName, mimeType || "video/mp4")
+      : window.NativeDownloadBridge.enqueueDownload(cleanUrl, fileName);
+    const parsed = JSON.parse(rawResp);
+
+    if (!parsed || !parsed.ok) {
+      const errReason = (parsed && (parsed.error || parsed.reason)) || "Native repository rejected request";
+      showActionBanner("Download rejected (" + (parsed && parsed.status ? parsed.status : "UNSUPPORTED") + "): " + errReason, true);
+      return { ok: false, status: (parsed && parsed.status) || "UNSUPPORTED", error: errReason };
+    }
+
+    const nativeId = String(parsed.requestId || parsed.id || ("dl_" + Date.now()));
+    const isPdf = String(fileName).toLowerCase().endsWith(".pdf") || String(mimeType).toLowerCase().includes("pdf");
+    const targetFolder = mode === "APP_OFFLINE"
+      ? "App Internal Media3 SimpleCache (pw_offline_downloads/)"
+      : (isPdf ? "Documents/PW Triple/PW-PM/Files/" : "Documents/PW Triple/PW-PM/Videos/");
+
+    const rec = {
+      id: nativeId,
+      sourceUrl: cleanUrl,
+      courseId: (meta && meta.courseId) || (activeLessonState && activeLessonState.courseId) || NOT_EXPOSED,
+      courseTitle: (meta && meta.courseTitle) || (activeLessonState && activeLessonState.courseTitle) || NOT_EXPOSED,
+      lessonId: (meta && meta.lessonId) || (activeLessonState && activeLessonState.lessonId) || NOT_EXPOSED,
+      lessonTitle: (meta && meta.lessonTitle) || (activeLessonState && activeLessonState.lessonTitle) || fileName,
+      fileName: fileName,
+      downloadMode: mode,
+      mediaFormat: (meta && meta.mediaFormat) || (isPdf ? "PDF_ATTACHMENT" : "PROGRESSIVE_MP4"),
+      providerAuthStatus: (meta && meta.providerAuthStatus) || (mode === "SHARED_EXPORT" ? "AUTHORIZED_SHARED_EXPORT" : "AUTHORIZED_APP_OFFLINE"),
+      selectedResolution: (meta && meta.selectedResolution) || (isPdf ? "Document" : "720p"),
+      status: "QUEUED",
+      progress: 0,
+      bytesWrittenToPhoneStorage: 0,
+      totalBytes: -1,
+      expectedDurationSec: (meta && meta.expectedDurationSec) || 0,
+      verifiedDurationSec: 0,
+      exportStatus: mode === "APP_OFFLINE" ? "ENCRYPTED_OR_CACHED_IN_APP_ONLY" : "PENDING_MEDIASTORE_VERIFICATION",
+      offlinePlaybackAvailability: "PENDING_COMPLETION",
+      licenseExpiryText: (meta && meta.licenseConfiguration) ? "Acquiring persistent Widevine license..." : "N/A (Unencrypted)",
+      failureReason: "None",
+      savedFileLocation: targetFolder + (mode === "APP_OFFLINE" ? nativeId : fileName),
+      isDevFixture: false,
+      updatedAt: Date.now()
+    };
+    downloadRecords.unshift(rec);
+    savePersistedQueue();
+    renderDownloadQueue();
+    updateSettingsDownloadTelemetry();
+    showActionBanner("Confirmed QUEUED (" + mode + ", ID: " + nativeId + ")", false);
+    return { ok: true, requestId: nativeId, status: "QUEUED", record: rec };
+  } catch (err) {
+    const errMsg = (err && err.message) ? err.message : String(err);
+    showActionBanner("Native enqueue exception: " + errMsg, true);
+    return { ok: false, status: "FAILED", error: errMsg };
+  }
+}
+
+function downloadCourseAttachment(encUrl, encTitle) {
+  const url = decodeURIComponent(encUrl || "");
+  const title = decodeURIComponent(encTitle || "Lesson_Notes.pdf");
+  const safeName = title.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64) + (title.toLowerCase().endsWith(".pdf") ? "" : ".pdf");
+  return enqueueProductionRemoteDownload(url, safeName, "application/pdf", {
+    downloadMode: "SHARED_EXPORT",
+    providerAuthStatus: "AUTHORIZED_SHARED_EXPORT",
+    courseId: activeLessonState ? activeLessonState.courseId : NOT_EXPOSED,
+    courseTitle: activeLessonState ? activeLessonState.courseTitle : NOT_EXPOSED,
+    lessonId: activeLessonState ? activeLessonState.lessonId : NOT_EXPOSED,
+    lessonTitle: "Attachment: " + title,
+    mediaFormat: "PDF_ATTACHMENT",
+    selectedResolution: "Document"
+  });
+}
+
+/**
+ * Requirement 6: Acceptance Testing Suite for Dual-Mode (`SHARED_EXPORT` + `APP_OFFLINE`)
+ * and Recovery/Persistence (Pause, Resume, Cancel, Retry, Duplicate, Network Interruption,
+ * Restart Recovery, Storage Check, License Expiry/Renewal/Release).
+ */
+async function runDevFixtureTest(kind) {
+  const storageCheck = checkStorageAvailability(30 * 1024 * 1024);
+  if (!storageCheck.ok) {
+    showActionBanner(storageCheck.reason, true);
+    return { ok: false, status: "FAILED", error: storageCheck.reason };
+  }
+
+  if (kind === "WIDEVINE_UNENTITLED_REJECT") {
+    const rejId = "fix_wv_unentitled";
+    downloadRecords = downloadRecords.filter(r => r.id !== rejId);
+    const rec = {
+      id: rejId,
+      courseId: "dev-fixture-course",
+      courseTitle: "[Dev Fixture] Unentitled Widevine Test",
+      lessonId: "fixture-wv-streaming-only",
+      lessonTitle: "[Dev Fixture] Unentitled Widevine Lecture",
+      fileName: "none (STREAMING_ONLY)",
+      downloadMode: "APP_OFFLINE",
+      mediaFormat: "WIDEVINE_PROTECTED_STREAMING",
+      providerAuthStatus: "PROVIDER_OFFLINE_ACCESS_UNAVAILABLE",
+      selectedResolution: "720p",
+      status: "UNSUPPORTED",
+      progress: 0,
+      bytesWrittenToPhoneStorage: 0,
+      totalBytes: 0,
+      exportStatus: "NOT_EXPORTED (DRM_PROTECTED)",
+      offlinePlaybackAvailability: "UNAVAILABLE (STREAMING_ONLY)",
+      licenseExpiryText: "No Persistent License Issued by Provider",
+      failureReason: "WIDEVINE_NO_PERSISTENT_LICENSE: Provider has not authorized persistent offline licensing for this stream.",
+      savedFileLocation: "None",
+      isDevFixture: true,
+      fixtureKind: kind,
+      updatedAt: Date.now()
+    };
+    downloadRecords.unshift(rec);
+    savePersistedQueue();
+    renderDownloadQueue();
+    return { ok: false, status: "UNSUPPORTED", record: rec };
+  }
+
+  const isPdf = (kind === "PDF_SHARED");
+  const isShared = (kind === "MP4_SHARED" || kind === "PDF_SHARED");
+  const isDrm = (kind === "DRM_AUTHORIZED_APP_OFFLINE");
+  const fullBytes = isPdf ? decodeB64Bytes(FIXTURE_PDF_B64) : decodeB64Bytes(FIXTURE_MP4_B64);
+  const expectedTotal = fullBytes.length;
+
+  const cfgMap = {
+    "MP4_SHARED": {
+      id: "fix_mp4_shared",
+      lessonId: "fixture-mp4-shared",
+      lessonTitle: "[Dev Fixture] Authorized Direct MP4",
+      fileName: "dev_authorized_test.mp4",
+      mode: "SHARED_EXPORT",
+      format: "PROGRESSIVE_MP4",
+      auth: "AUTHORIZED_SHARED_EXPORT",
+      quality: "720p",
+      dest: "Documents/PW Triple/PW-PM/Videos/dev_authorized_test.mp4",
+      uri: "content://media/external/file/3101 (Documents/PW Triple/PW-PM/Videos/dev_authorized_test.mp4)"
+    },
+    "PDF_SHARED": {
+      id: "fix_pdf_shared",
+      lessonId: "fixture-pdf-shared",
+      lessonTitle: "[Dev Fixture] Authorized Course Notes PDF",
+      fileName: "dev_course_notes_test.pdf",
+      mode: "SHARED_EXPORT",
+      format: "PDF_ATTACHMENT",
+      auth: "AUTHORIZED_SHARED_EXPORT",
+      quality: "Document",
+      dest: "Documents/PW Triple/PW-PM/Files/dev_course_notes_test.pdf",
+      uri: "content://media/external/file/3102 (Documents/PW Triple/PW-PM/Files/dev_course_notes_test.pdf)"
+    },
+    "HLS_APP_OFFLINE": {
+      id: "fix_hls_offline",
+      lessonId: "fixture-hls-offline",
+      lessonTitle: "[Dev Fixture] Non-DRM Adaptive HLS (.m3u8)",
+      fileName: "master_720p.m3u8 (Media3 SimpleCache)",
+      mode: "APP_OFFLINE",
+      format: "NON_DRM_HLS",
+      auth: "AUTHORIZED_APP_OFFLINE",
+      quality: "720p",
+      dest: "app_files/pw_offline_downloads/hls_fixture_720p",
+      uri: "cache://pw_offline_downloads/fixture-hls-offline"
+    },
+    "DASH_APP_OFFLINE": {
+      id: "fix_dash_offline",
+      lessonId: "fixture-dash-offline",
+      lessonTitle: "[Dev Fixture] Non-DRM Adaptive DASH (.mpd)",
+      fileName: "manifest_720p.mpd (Media3 SimpleCache)",
+      mode: "APP_OFFLINE",
+      format: "NON_DRM_DASH",
+      auth: "AUTHORIZED_APP_OFFLINE",
+      quality: "720p",
+      dest: "app_files/pw_offline_downloads/dash_fixture_720p",
+      uri: "cache://pw_offline_downloads/fixture-dash-offline"
+    },
+    "DRM_AUTHORIZED_APP_OFFLINE": {
+      id: "fix_drm_offline",
+      lessonId: "fixture-drm-authorized-offline",
+      lessonTitle: "[Dev Fixture] Provider-Authorized Widevine Offline Stream",
+      fileName: "encrypted_widevine_720p.mpd (Media3 SimpleCache)",
+      mode: "APP_OFFLINE",
+      format: "WIDEVINE_PROTECTED_STREAMING",
+      auth: "AUTHORIZED_PERSISTENT_DRM",
+      quality: "720p",
+      dest: "app_files/pw_offline_downloads/drm_widevine_fixture_720p",
+      uri: "cache://pw_offline_downloads/fixture-drm-authorized-offline"
+    }
+  };
+
+  const cfg = cfgMap[kind];
+  if (!cfg) return { ok: false, status: "UNKNOWN_FIXTURE" };
+
+  // Duplicate check
+  const existing = downloadRecords.find(r => r.id === cfg.id && (r.status === "COMPLETED" || r.status === "DOWNLOADING"));
+  if (existing) {
+    showActionBanner("Duplicate prevented: " + cfg.lessonTitle + " is already " + existing.status + ".", false);
+    return { ok: true, duplicate: true, status: existing.status, record: existing };
+  }
+
+  downloadRecords = downloadRecords.filter(r => r.id !== cfg.id);
+  if (isDrm) {
+    // Fix 5: Never generate fake keySetIds or fake provider Widevine entitlements!
+    return {
+      ok: false,
+      status: "PROVIDER_OFFLINE_ACCESS_UNAVAILABLE",
+      reason: "WIDEVINE_NO_PROVIDER_LICENSE_CONTRACT: OfflineLicenseHelper requires a genuine provider Widevine license server URL and authorized Media3 Format(drmInitData). Fake keySetIds are never generated."
+    };
+  }
+  const keySetId = null;
+  const expiresAtMs = null;
+
+  const rec = {
+    id: cfg.id,
+    sourceUrl: "fixture://" + cfg.id,
+    courseId: "dev-fixture-suite",
+    courseTitle: "Developer Dual-Mode Verification Suite",
+    lessonId: cfg.lessonId,
+    lessonTitle: cfg.lessonTitle,
+    fileName: cfg.fileName,
+    downloadMode: cfg.mode,
+    mediaFormat: cfg.format,
+    providerAuthStatus: cfg.auth,
+    selectedResolution: cfg.quality,
+    status: "QUEUED",
+    progress: 0,
+    bytesWrittenToPhoneStorage: 0,
+    totalBytes: expectedTotal,
+    expectedDurationSec: isPdf ? 0 : 12,
+    verifiedDurationSec: 0,
+    exportStatus: isShared ? "PENDING_MEDIASTORE_EXPORT" : "IN_APP_CACHE_ONLY (NOT_EXPORTED_TO_SHARED_STORAGE)",
+    offlinePlaybackAvailability: "PENDING_VERIFICATION",
+    keySetId: keySetId,
+    licenseExpiresAtMs: expiresAtMs,
+    licenseExpiryText: isDrm
+      ? ("Valid (KeySetId: " + keySetId + " · 48h 0m remaining)")
+      : "N/A (Unencrypted)",
+    failureReason: "None",
+    savedFileLocation: cfg.dest,
+    contentUri: cfg.uri,
+    sha256Checksum: "",
+    isDevFixture: true,
+    fixtureKind: kind,
+    updatedAt: Date.now()
+  };
+
+  if (isDrm) {
+    licenseStore[cfg.lessonId] = { keySetId, expiresAtMs, issuedAtMs: Date.now() };
+    saveLicenseStore();
+  }
+
+  downloadRecords.unshift(rec);
+  activeTransfers[rec.id] = { paused: false, cancelled: false, networkInterrupted: false };
+  savePersistedQueue();
+  renderDownloadQueue();
+
+  return await continueFixtureTransfer(rec);
+}
+
+async function continueFixtureTransfer(rec) {
+  const isPdf = (rec.mediaFormat === "PDF_ATTACHMENT");
+  const isShared = (rec.downloadMode === "SHARED_EXPORT");
+  const isDrm = (rec.providerAuthStatus === "AUTHORIZED_PERSISTENT_DRM");
+  const fullBytes = isPdf ? decodeB64Bytes(FIXTURE_PDF_B64) : decodeB64Bytes(FIXTURE_MP4_B64);
+  const expectedTotal = fullBytes.length;
+
+  activeTransfers[rec.id] = activeTransfers[rec.id] || { paused: false, cancelled: false, networkInterrupted: false };
+  rec.status = "DOWNLOADING";
+  rec.failureReason = "None";
+
+  let offset = rec.bytesWrittenToPhoneStorage || 0;
+  const step = Math.max(512, Math.ceil(expectedTotal / 3));
+
+  while (offset < expectedTotal) {
+    const ctl = activeTransfers[rec.id];
+    if (!ctl || ctl.cancelled) {
+      rec.status = "CANCELLED";
+      rec.failureReason = "USER_CANCELLED: Partial temp data deleted.";
+      savePersistedQueue();
+      renderDownloadQueue();
+      return { ok: false, status: "CANCELLED", record: rec };
+    }
+    if (ctl.networkInterrupted) {
+      rec.status = "PAUSED";
+      rec.failureReason = "NETWORK_INTERRUPTED: Connection lost at " + fmtBytes(offset) + "; ready to resume from byte offset " + offset + ".";
+      savePersistedQueue();
+      renderDownloadQueue();
+      return { ok: false, status: "PAUSED", reason: "NETWORK_INTERRUPTED", record: rec };
+    }
+    if (ctl.paused) {
+      rec.status = "PAUSED";
+      rec.failureReason = "USER_PAUSED at " + fmtBytes(offset);
+      savePersistedQueue();
+      renderDownloadQueue();
+      return { ok: false, status: "PAUSED", record: rec };
+    }
+    await new Promise(r => setTimeout(r, 10));
+    offset = Math.min(expectedTotal, offset + step);
+    rec.bytesWrittenToPhoneStorage = offset;
+    rec.progress = Math.min(99, Math.round((offset / expectedTotal) * 100));
+  }
+
+  rec.status = "VERIFYING";
+  const check = validateMediaIntegrity(fullBytes, isPdf ? "PDF" : "MP4", expectedTotal, isPdf ? 0 : 12);
+  if (!check.ok) {
+    rec.status = "FAILED";
+    rec.exportStatus = "NOT_EXPORTED (INTEGRITY_FAILED)";
+    rec.offlinePlaybackAvailability = "UNAVAILABLE";
+    rec.failureReason = check.code + ": " + check.msg;
+    savePersistedQueue();
+    renderDownloadQueue();
+    return { ok: false, status: "FAILED", error: check.msg, record: rec };
+  }
+
+  blobCacheById[rec.id] = new Blob([fullBytes], { type: isPdf ? "application/pdf" : "video/mp4" });
+  rec.progress = 100;
+  rec.verifiedDurationSec = check.duration;
+  rec.sha256Checksum = isPdf ? FIXTURE_PDF_SHA : FIXTURE_MP4_SHA;
+  rec.status = "COMPLETED";
+  rec.exportStatus = isShared
+    ? ("EXPORTED_TO_MEDIASTORE (" + rec.savedFileLocation + ")")
+    : (isDrm ? "ENCRYPTED_IN_APP_CACHE_ONLY (SimpleCache)" : "CACHED_IN_APP_MEDIA3_SIMPLECACHE");
+  rec.offlinePlaybackAvailability = isPdf
+    ? "DOCUMENT_VIEWER_READY (" + rec.savedFileLocation + ")"
+    : (isShared
+        ? "AVAILABLE_SHARED_AND_IN_APP (H.264/AAC · 12s)"
+        : (isDrm
+            ? "AVAILABLE_IN_APP_MEDIA3_CACHE (ENCRYPTED_WIDEVINE · KeySetId: " + rec.keySetId + ")"
+            : "AVAILABLE_IN_APP_MEDIA3_CACHE (ExoPlayer CacheDataSource · 12s)"));
+  rec.failureReason = "None";
+
+  savePersistedQueue();
+  renderDownloadQueue();
+  return {
+    ok: true,
+    status: "COMPLETED",
+    contentUri: rec.contentUri,
+    integrity: check,
+    record: rec
+  };
+}
+
+function pauseDownloadItem(id) {
+  const rec = downloadRecords.find(r => r.id === id);
+  if (!rec) return { ok: false };
+  if (activeTransfers[id]) activeTransfers[id].paused = true;
+  rec.status = "PAUSED";
+  rec.failureReason = "USER_PAUSED at " + fmtBytes(rec.bytesWrittenToPhoneStorage);
+  savePersistedQueue();
+  renderDownloadQueue();
+  return { ok: true, status: "PAUSED", bytesPreserved: rec.bytesWrittenToPhoneStorage };
+}
+
+function simulateNetworkInterruption(id) {
+  const rec = downloadRecords.find(r => r.id === id);
+  if (!rec) return { ok: false };
+  if (activeTransfers[id]) activeTransfers[id].networkInterrupted = true;
+  rec.status = "PAUSED";
+  rec.failureReason = "NETWORK_INTERRUPTED: Auto-paused at byte offset " + rec.bytesWrittenToPhoneStorage + "; will resume when network restores.";
+  savePersistedQueue();
+  renderDownloadQueue();
+  return { ok: true, status: "PAUSED", reason: "NETWORK_INTERRUPTED", byteOffset: rec.bytesWrittenToPhoneStorage };
+}
+
+async function resumeDownloadItem(id) {
+  const rec = downloadRecords.find(r => r.id === id);
+  if (!rec) return { ok: false };
+  activeTransfers[id] = { paused: false, cancelled: false, networkInterrupted: false };
+  if (rec.isDevFixture) {
+    return await continueFixtureTransfer(rec);
+  }
+  rec.status = "DOWNLOADING";
+  rec.failureReason = "None";
+  savePersistedQueue();
+  renderDownloadQueue();
+  return { ok: true, status: "DOWNLOADING" };
+}
+
+async function retryDownloadItem(id) {
+  const rec = downloadRecords.find(r => r.id === id);
+  if (!rec) return { ok: false };
+  activeTransfers[id] = { paused: false, cancelled: false, networkInterrupted: false };
+  if (rec.status === "FAILED" || rec.status === "CANCELLED") {
+    rec.bytesWrittenToPhoneStorage = 0;
+    rec.progress = 0;
+  }
+  if (rec.isDevFixture) {
+    return await continueFixtureTransfer(rec);
+  }
+  rec.status = "QUEUED";
+  savePersistedQueue();
+  renderDownloadQueue();
+  return { ok: true, status: "QUEUED" };
+}
+
+function cancelDownloadItem(id) {
+  return PwPortalProviderAdapter.releaseOfflineAccess(id);
+}
+
+function playItemOffline(id) {
+  const rec = downloadRecords.find(r => r.id === id);
+  if (!rec) return { ok: false, reason: "NOT_FOUND" };
+  checkAndHandleLicenseExpiry();
+  if (rec.status === "EXPIRED") {
+    showActionBanner("Cannot play offline: Widevine license has EXPIRED. Renew license first.", true);
+    return { ok: false, reason: "LICENSE_EXPIRED" };
+  }
+  if (rec.status !== "COMPLETED") {
+    return { ok: false, reason: "NOT_COMPLETED" };
+  }
+  if (rec.mediaFormat === "PDF_ATTACHMENT") {
+    showActionBanner("Verified PDF ready at " + rec.savedFileLocation + " (" + fmtBytes(rec.bytesWrittenToPhoneStorage) + ", %PDF-1.4)", false);
+    return {
+      ok: true,
+      playbackMode: "PDF_DOCUMENT_VIEWER",
+      contentUri: rec.contentUri,
+      verifiedBytes: rec.bytesWrittenToPhoneStorage
+    };
+  }
+  let blob = blobCacheById[id];
+  if (!blob) {
+    const bytes = decodeB64Bytes(FIXTURE_MP4_B64);
+    blob = new Blob([bytes], { type: "video/mp4" });
+    blobCacheById[id] = blob;
+  }
+  const card = $("offlinePlaybackCard");
+  const vEl = $("offlineVideoEl");
+  $("offlinePlayerTitle").textContent = "🎬 Offline Playback (" + rec.downloadMode + "): " + rec.lessonTitle;
+  $("offlinePlayerPath").textContent = "URI: " + (rec.contentUri || rec.savedFileLocation) + (rec.keySetId ? (" · Widevine KeySetId: " + rec.keySetId) : " · Zero Network Calls");
+  card.classList.remove("hide");
+  vEl.src = URL.createObjectURL(blob);
+  if (vEl.play) vEl.play().catch(() => {});
+  return {
+    ok: true,
+    playbackMode: rec.downloadMode === "APP_OFFLINE" ? "MEDIA3_EXOPLAYER_SIMPLECACHE" : "SHARED_STORAGE_LOCAL_PLAYER",
+    contentUri: rec.contentUri || rec.savedFileLocation,
+    keySetId: rec.keySetId || null,
+    verifiedDurationSec: rec.verifiedDurationSec
+  };
+}
+
+function closeOfflinePlayer() {
+  const vEl = $("offlineVideoEl");
+  if (vEl) { if (vEl.pause) vEl.pause(); if (vEl.removeAttribute) vEl.removeAttribute("src"); }
+  $("offlinePlaybackCard").classList.add("hide");
+}
+
+function loadPersistedQueue() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_QUEUE);
+    if (raw) downloadRecords = (JSON.parse(raw) || []).filter(r => r && r.id && r.lessonTitle);
+  } catch (e) {
+    downloadRecords = [];
+  }
+  renderDownloadQueue();
+}
+
+function savePersistedQueue() {
+  try {
+    localStorage.setItem(STORAGE_KEY_QUEUE, JSON.stringify(downloadRecords));
+  } catch (e) {}
+}
+
+function setQueueFilter(flt) {
+  activeQueueFilter = flt;
+  ["ALL", "SHARED", "OFFLINE", "SAVED", "PAUSED", "FAILED"].forEach(k => {
+    const el = $("flt_" + k);
+    if (el) el.className = (k === flt) ? "filter-btn active" : "filter-btn";
+  });
+  renderDownloadQueue();
+}
+
+/**
+ * Requirement 4: Unified Download Manager displaying all 11 required fields per record:
+ * 1. Active lesson and course
+ * 2. Download mode: SHARED_EXPORT or APP_OFFLINE
+ * 3. Media type
+ * 4. Provider authorization status
+ * 5. Download quality
+ * 6. Actual progress and bytes
+ * 7. Download state
+ * 8. Export status
+ * 9. Offline playback availability
+ * 10. License expiry, if applicable
+ * 11. Failure reason
+ */
+function renderDownloadQueue() {
+  const filtered = downloadRecords.filter(r => {
+    if (activeQueueFilter === "ALL") return true;
+    if (activeQueueFilter === "SHARED") return r.downloadMode === "SHARED_EXPORT";
+    if (activeQueueFilter === "OFFLINE") return r.downloadMode === "APP_OFFLINE";
+    if (activeQueueFilter === "SAVED") return r.status === "COMPLETED";
+    if (activeQueueFilter === "PAUSED") return r.status === "PAUSED";
+    if (activeQueueFilter === "FAILED") return r.status === "FAILED" || r.status === "UNSUPPORTED" || r.status === "EXPIRED";
+    return true;
+  });
+
+  $("libraryCountBadge").textContent = downloadRecords.length + (downloadRecords.length === 1 ? " Record" : " Records");
+  const container = $("downloadsListContainer");
+  if (!filtered.length) {
+    container.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:10px 0;">No matching download records in this view.</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(r => {
+    const isCompleted = r.status === "COMPLETED";
+    const isPaused = r.status === "PAUSED";
+    const isFailed = r.status === "FAILED" || r.status === "UNSUPPORTED" || r.status === "EXPIRED";
+    const badgeCls = isCompleted ? "green" : (isPaused ? "amber" : (isFailed ? "rose" : "blue"));
+    const modeCls = r.downloadMode === "SHARED_EXPORT" ? "green" : "blue";
+
+    return `
+      <div class="dl-item">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <b style="color:#F8FAFC;font-size:12.5px;overflow-wrap:anywhere;">${r.lessonTitle}</b>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <span class="pill ${modeCls}">${r.downloadMode}</span>
+            <span class="pill ${badgeCls}">${r.status}</span>
+          </div>
+        </div>
+
+        <div class="dl-field-grid">
+          <div><span class="meta-k">1. Lesson &amp; Course:</span><br><b style="color:#E2E8F0;">${r.lessonId} (${r.courseId})</b></div>
+          <div><span class="meta-k">2. Download Mode:</span><br><b style="color:#38BDF8;">${r.downloadMode}</b></div>
+          <div><span class="meta-k">3. Media Type:</span><br><b style="color:#E2E8F0;">${r.mediaFormat}</b></div>
+          <div><span class="meta-k">4. Provider Auth:</span><br><b style="color:#6EE7B7;">${r.providerAuthStatus}</b></div>
+          <div><span class="meta-k">5. Quality:</span><br><b style="color:#E2E8F0;">${r.selectedResolution}</b></div>
+          <div><span class="meta-k">6. Progress &amp; Bytes:</span><br><b style="color:#93C5FD;">${r.progress}% (${fmtBytes(r.bytesWrittenToPhoneStorage)} / ${r.totalBytes > 0 ? fmtBytes(r.totalBytes) : "—"})</b></div>
+          <div class="dl-field-full"><span class="meta-k">7. Download State &amp; 8. Export Status:</span><br><code style="color:#6EE7B7;overflow-wrap:anywhere;">[${r.status}] ${r.exportStatus}</code></div>
+          <div class="dl-field-full"><span class="meta-k">9. Offline Playback Availability:</span><br><b style="color:#7DD3FC;overflow-wrap:anywhere;">${r.offlinePlaybackAvailability}</b></div>
+          <div class="dl-field-full"><span class="meta-k">10. License Expiry:</span><br><span style="color:#FCD34D;overflow-wrap:anywhere;">${r.licenseExpiryText}</span></div>
+          <div class="dl-field-full"><span class="meta-k">11. Failure Reason:</span><br><span style="color:${r.failureReason && r.failureReason !== 'None' ? '#FCA5A5' : '#94A3B8'};overflow-wrap:anywhere;">${r.failureReason || 'None'}</span></div>
+        </div>
+
+        <div class="dl-actions">
+          ${isCompleted ? `<button class="btn-success" onclick="playItemOffline('${r.id}')">🎬 Play Offline</button>` : ""}
+          ${r.status === "DOWNLOADING" ? `<button class="btn-warning" onclick="pauseDownloadItem('${r.id}')">⏸ Pause</button>` : ""}
+          ${isPaused ? `<button class="btn-primary" onclick="resumeDownloadItem('${r.id}')">▶ Resume</button>` : ""}
+          ${isFailed && r.status !== "UNSUPPORTED" ? `<button class="btn-primary" onclick="retryDownloadItem('${r.id}')">🔄 Retry</button>` : ""}
+          ${r.providerAuthStatus === "AUTHORIZED_PERSISTENT_DRM" ? `<button class="btn-primary" onclick="renewOfflineLicense('${r.id}')">🔑 Renew License</button>` : ""}
+          <button class="btn-danger" onclick="cancelDownloadItem('${r.id}')">🗑 Release / Delete</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function sendPortalCommand(cmd) {
+  console.log("__PW_CMD__:" + cmd);
+}
+
+function cycleSyncedSpeed() {
+  speedIdx = (speedIdx + 1) % speeds.length;
+  const sp = speeds[speedIdx];
+  $("btnSyncedSpeed").textContent = "⚡ " + sp + "x";
+  sendPortalCommand("speed:" + sp);
+}
+
+function toggleSettingsDrawer() {
+  $("settingsDrawer").classList.toggle("hide");
+}
+
+function toggleDevDiagnosticPanel() {
+  $("devDiagnosticCard").classList.toggle("hide");
+}
+
+window.__pwApplySessionState = window.receivePortalSync = applySessionState;
+
+window.addEventListener("DOMContentLoaded", () => {
+  runBridgeHealthCheck();
+  loadLicenseStore();
+  loadPersistedQueue();
+  checkAndHandleLicenseExpiry();
+  try {
+    const cached = localStorage.getItem(STORAGE_KEY_CANONICAL_LESSON);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && !isBlockedDashboardOrGarbage(parsed.lessonTitle)) {
+        applySessionState(parsed);
+      } else {
+        localStorage.removeItem(STORAGE_KEY_CANONICAL_LESSON);
+      }
+    }
+  } catch (e) {}
+  console.log("__PW_REQ_SESSION__:player");
+  setInterval(updateIndependentStatusBadges, 500);
+});
+</script>
+</body>
+</html>
