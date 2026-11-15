@@ -18,7 +18,7 @@ import java.util.UUID
 class OfflineLibraryIntegrationTest {
     @Test
     fun completedDownloadOpensOfflineRestoresProgressAndDeletesOnlyItsOwnedFile() {
-        val instrumentation = getInstrumentation()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val id = UUID.randomUUID().toString()
         val fileName = "offline-test-$id.mp4"
