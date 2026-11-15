@@ -128,7 +128,7 @@ class PwPmDualModeUnitTest {
         assertNull(DownloadedMediaVerifier.validateHeaderBytes(webm, webm.size, false, "clip.webm"))
         assertNull(DownloadedMediaVerifier.validateHeaderBytes(pdf, pdf.size, true, "notes.pdf"))
         assertNotNull(DownloadedMediaVerifier.validateHeaderBytes(broken, broken.size, false, "clip.mp4"))
-        assertNotNull(DownloadedMediaVerifier.validateHeaderBytes(mp4, mp4.size, false, "clip.m3u8"))
+        assertFalse(DownloadedMediaVerifier.isSupportedVideo("clip.m3u8", "application/x-mpegURL"))
     }
 
     @Test
