@@ -3,7 +3,7 @@ package com.pwskills.mobile.pwpm02
 import android.os.Environment
 import android.os.SystemClock
 import android.net.Uri
-import androidx.test.core.app.InstrumentationRegistry
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.media3.common.Player
 import org.json.JSONObject
