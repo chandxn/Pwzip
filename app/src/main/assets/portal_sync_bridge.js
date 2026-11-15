@@ -289,32 +289,55 @@
         meta.lessonTitle = selectedDomLessonTitle;
       }
 
-      // 4. Check non-active `[data-lesson-id]` container only if it matches the active lecture heading
+      // 4. Resolve a visible lesson heading from common portal DOM structures.
+      // Headings often wrap text in spans; do not reject nodes with children.
+      // This supplies a title only. It never fabricates a provider lesson ID.
       try {
         if (!meta.lessonTitle && document.querySelectorAll) {
-          var headings = document.querySelectorAll("h1, h2, h3, [class*='lecture-title'], [class*='lesson-title']");
+          var headings = document.querySelectorAll(
+            "[data-testid*='lecture-title'], [data-testid*='lesson-title'], " +
+            "[class*='lecture-title'], [class*='lesson-title'], " +
+            "[aria-label*='lecture'], [aria-label*='lesson'], h1, h2, h3"
+          );
+          var bestTitle = "";
+          var bestScore = -1;
           for (var i = 0; i < headings.length; i++) {
             var el = headings[i];
-            if (el.children && el.children.length > 0) continue;
-            if (el.closest && el.closest("header, nav, [class*='navbar'], [class*='streak'], [class*='progress'], [class*='dashboard']")) continue;
-            if (el.getBoundingClientRect) {
-              var r = el.getBoundingClientRect();
-              if (r.top < 58 || r.top > 340 || r.width < 60 || r.height < 14 || r.height > 96) continue;
+            if (!el || (el.closest && el.closest("header, nav, [role='navigation'], [class*='navbar'], [class*='streak'], [class*='progress'], [class*='dashboard']"))) continue;
+            var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+            if (rect && (rect.width < 40 || rect.height < 10 || rect.bottom < 0 || rect.top > (window.innerHeight || 900))) continue;
+            var candidateTitle = cleanProviderText(
+              el.getAttribute("data-lesson-title") ||
+              el.getAttribute("title") ||
+              el.getAttribute("aria-label") ||
+              el.textContent || ""
+            );
+            if (!candidateTitle || candidateTitle.length < 4) continue;
+
+            var score = 0;
+            var cls = String(el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className || "").toLowerCase();
+            var testId = String(el.getAttribute("data-testid") || "").toLowerCase();
+            if (cls.indexOf("lecture-title") !== -1 || cls.indexOf("lesson-title") !== -1) score += 100;
+            if (testId.indexOf("lecture-title") !== -1 || testId.indexOf("lesson-title") !== -1) score += 120;
+            if (el.getAttribute("data-lesson-title")) score += 130;
+            if (rect) {
+              if (rect.top >= 0 && rect.top < (window.innerHeight || 900) * 0.65) score += 10;
+              if (rect.width > 80) score += 5;
             }
-            var candidateTitle = cleanProviderText(el.getAttribute("title") || el.textContent || "");
-            if (candidateTitle && candidateTitle.length >= 4) {
-              // If this heading differs from __NEXT_DATA__ lessonTitle, clear any stale lessonId unless the heading itself carries data-lesson-id!
+            if (score > bestScore) {
+              bestScore = score;
+              bestTitle = candidateTitle;
               var ownId = String(el.getAttribute("data-lesson-id") || el.getAttribute("data-lecture-id") || "").trim();
-              meta.lessonTitle = candidateTitle;
               if (isValidProviderId(ownId)) {
                 meta.lessonId = ownId;
                 meta.identitySource = "DOM.headingAttribute";
-              } else if (meta.identitySource === "__NEXT_DATA__") {
-                meta.lessonId = "";
-                meta.identitySource = "DOM.headingOnly_IdUnresolved";
               }
-              break;
             }
+          }
+          if (bestTitle) meta.lessonTitle = bestTitle;
+          if (bestTitle && !meta.lessonId && meta.identitySource === "__NEXT_DATA__") {
+            meta.lessonId = "";
+            meta.identitySource = "DOM.headingOnly_IdUnresolved";
           }
         }
       } catch (e) {}
