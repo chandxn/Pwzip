@@ -91,8 +91,8 @@ input, textarea {
 <body>
 <main>
   <section class="card" id="lectureWorkspace">
-    <div style="font-size:15px;font-weight:800;margin-bottom:8px">📚 Uploaded Lecture Tutor</div>
-    <p style="color:var(--muted);margin-bottom:10px">Use lecture files or transcripts you are authorized to use. This tutor does not read protected course streams.</p>
+    <div style="font-size:15px;font-weight:800;margin-bottom:8px">📚 Active Lesson Tutor</div>
+    <p style="color:var(--muted);margin-bottom:10px">Lecture analysis requires captions or transcript exposed by the authorized lesson player. Lesson details alone are not lecture understanding.</p>
     <label class="ctx-k" for="apiBase">Tutor server</label>
     <input id="apiBase" type="url" placeholder="https://your-secure-tutor-server.example" autocomplete="url" style="margin:5px 0 8px">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -104,12 +104,7 @@ input, textarea {
       <button onclick="authenticate('register')">Create account</button>
     </div>
     <div id="authStatus" class="content-box" style="margin:8px 0">Sign in to your tutor server.</div>
-    <input id="lectureTitle" type="text" placeholder="Lecture title (optional)" style="margin-bottom:8px">
-    <input id="lectureFile" type="file" accept="audio/*,video/*,.mp3,.mp4,.m4a,.wav,.webm,.ogg,.flac" style="margin-bottom:8px">
-    <div style="color:var(--muted);font-size:11px;margin:-4px 0 8px">Audio/video files up to 25 MB. For longer lectures, upload a transcript with timestamps.</div>
-    <button class="btn-success" style="width:100%" onclick="uploadLecture()">Upload &amp; transcribe lecture</button>
-    <textarea id="manualTranscript" placeholder="Or paste a transcript you are authorized to use (20 characters minimum)" rows="3" style="margin-top:8px"></textarea>
-    <button style="width:100%;margin-top:6px" onclick="saveTranscript()">Save transcript</button>
+    <div id="mediaAvailability" class="content-box">Waiting for an authorized transcript or captions interface from the active player.</div>
     <select id="lectureSelect" onchange="loadLecture()" style="width:100%;margin-top:8px;background:#070B14;color:white;padding:10px;border:1px solid var(--border);border-radius:8px"><option value="">Choose a lecture</option></select>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
       <button class="btn-primary" onclick="createStudyGuide()">Summary &amp; chapters</button>
@@ -227,19 +222,18 @@ function apiHeaders(json=true) { const h={}; if(tutorToken)h.Authorization="Bear
 async function authenticate(mode) { try { const base=apiBase(); if(!/^https:\/\//i.test(base)) throw new Error("Enter the HTTPS address of your tutor server."); const response=await fetch(base+"/api/auth/"+mode,{method:"POST",headers:apiHeaders(),body:JSON.stringify({email:$('authEmail').value,password:$('authPassword').value})}); const data=await response.json();if(!response.ok)throw new Error(data.error||"Sign in failed.");tutorToken=data.token;localStorage.setItem("pw_tutor_token",tutorToken);$('authStatus').textContent="Signed in. Loading your lecture library…";await refreshLectures();}catch(e){$('authStatus').textContent=e.message;} }
 async function refreshLectures(){const r=await fetch(apiBase()+"/api/lectures",{headers:apiHeaders(false)});const list=await r.json();if(!r.ok)throw new Error(list.error||"Could not load lectures.");const s=$('lectureSelect');s.innerHTML='<option value="">Choose a lecture</option>'+list.map(l=>`<option value="${escapeAttr(l.id)}">${escapeHtml(l.title)}</option>`).join('');if(list.some(l=>l.id===selectedLectureId))s.value=selectedLectureId;else selectedLectureId="";$('authStatus').textContent=`Signed in · ${list.length} lecture${list.length===1?'':'s'} available.`;if(selectedLectureId)await loadLecture();}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));} function escapeAttr(s){return escapeHtml(s);}
-async function uploadLecture(){try{if(!tutorToken)throw new Error("Sign in first.");const f=$('lectureFile').files[0];if(!f)throw new Error("Choose an authorized lecture file.");const form=new FormData();form.append('lecture',f);form.append('title',$('lectureTitle').value||f.name);$('authStatus').textContent="Uploading and transcribing…";const r=await fetch(apiBase()+"/api/lectures/upload",{method:'POST',headers:apiHeaders(false),body:form});const d=await r.json();if(!r.ok)throw new Error(d.error||"Upload failed.");selectedLectureId=d.id;localStorage.setItem('pw_tutor_lecture',d.id);await refreshLectures();$('lectureSelect').value=d.id;$('studyGuide').textContent='Transcript ready. Use Summary & chapters to create timestamped study notes.';renderTranscript(d);}catch(e){$('authStatus').textContent=e.message;}}
-async function saveTranscript(){try{if(!tutorToken)throw new Error('Sign in first.');const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId||'transcript'),{method:'POST',headers:apiHeaders(),body:JSON.stringify({title:$('lectureTitle').value||'Uploaded transcript',transcript:$('manualTranscript').value})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not save transcript.');selectedLectureId=d.id;localStorage.setItem('pw_tutor_lecture',d.id);await refreshLectures();renderTranscript(d);}catch(e){$('authStatus').textContent=e.message;}}
 function renderTranscript(l){const body=(l.segments||[]).map(s=>`[${fmtTime(s.start)}] ${s.text}`).join('\n')||l.transcript||'';$('studyGuide').textContent=body?`Transcript · ${l.title}\n\n${body}`:'No transcript text is available.';}
 async function loadLecture(){selectedLectureId=$('lectureSelect').value;if(!selectedLectureId)return;localStorage.setItem('pw_tutor_lecture',selectedLectureId);try{const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId),{headers:apiHeaders(false)});const l=await r.json();if(!r.ok)throw new Error(l.error);renderTranscript(l);const h=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/history',{headers:apiHeaders(false)});const messages=await h.json();$('chatHistory').innerHTML=messages.map(m=>`<b>${m.role==='user'?'You':'Tutor'}:</b> ${escapeHtml(m.content)}`).join('<br><br>')||'Ask grounded questions about this lecture.';}catch(e){$('authStatus').textContent=e.message;}}
 async function saveVoiceMessage(role,content){if(!content||!selectedLectureId)return;try{await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/voice-message',{method:'POST',headers:apiHeaders(),body:JSON.stringify({role,content})});const box=$('chatHistory');box.innerHTML+=`<br><br><b>${role==='user'?'You':'Tutor'} (voice):</b> ${escapeHtml(content)}`;box.scrollTop=box.scrollHeight;}catch(e){$('voiceStatus').textContent='Could not save voice history: '+e.message;}}
-async function createStudyGuide(){try{if(!selectedLectureId)throw new Error('Choose an uploaded lecture first.');const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/study-guide',{method:'POST',headers:apiHeaders(),body:'{}'});const d=await r.json();if(!r.ok)throw new Error(d.error);$('studyGuide').textContent=d.summary+'\n\n'+d.chapters.map(c=>`[${fmtTime(c.start_seconds)}] ${c.title}\n${c.summary}`).join('\n\n');}catch(e){$('authStatus').textContent=e.message;}}
-async function sendTutorQuestion(){try{if(!selectedLectureId)throw new Error('Choose an uploaded lecture first.');const question=$('chatQuestion').value.trim();if(!question)return;const box=$('chatHistory');box.textContent+='\n\nYou: '+question+'\nTutor: ';$('chatQuestion').value='';const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/chat',{method:'POST',headers:apiHeaders(),body:JSON.stringify({question})});if(!r.ok){const e=await r.json();throw new Error(e.error||'Tutor request failed.');}const reader=r.body.getReader(),decoder=new TextDecoder();let pending='';while(true){const {value,done}=await reader.read();if(done)break;pending+=decoder.decode(value,{stream:true});const parts=pending.split('\n\n');pending=parts.pop();for(const part of parts){const line=part.split('\n').find(x=>x.startsWith('data: '));if(!line||line==='data: [DONE]')continue;const obj=JSON.parse(line.slice(6));if(obj.delta)box.textContent+=obj.delta;}}box.scrollTop=box.scrollHeight;}catch(e){$('authStatus').textContent=e.message;}}
-async function toggleVoiceTutor(){if(voicePeer){voicePeer.close();voicePeer=null;$('voiceAudio').srcObject=null;$('voiceButton').textContent='Start voice tutor';$('voiceStatus').textContent='Voice tutoring is off.';return;}try{if(!selectedLectureId)throw new Error('Choose an uploaded lecture first.');const session=await fetch(apiBase()+'/api/realtime/session',{method:'POST',headers:apiHeaders(),body:JSON.stringify({lectureId:selectedLectureId})});const cfg=await session.json();if(!session.ok)throw new Error(cfg.error||'Could not start voice session.');const secret=cfg.value||cfg.client_secret?.value;if(!secret)throw new Error('Server did not return a temporary voice credential.');voicePeer=new RTCPeerConnection();voicePeer.ontrack=e=>$('voiceAudio').srcObject=e.streams[0];voicePeer.onconnectionstatechange=()=>$('voiceStatus').textContent='Voice session: '+voicePeer.connectionState;voiceChannel=voicePeer.createDataChannel('oai-events');voiceChannel.onmessage=e=>{const event=JSON.parse(e.data);if(event.type==='input_audio_buffer.speech_started')$('voiceStatus').textContent='Listening… (interruptions enabled)';if(event.type==='response.created')$('voiceStatus').textContent='Tutor is responding. Speak to interrupt.';if(event.type==='conversation.item.input_audio_transcription.completed')saveVoiceMessage('user',event.transcript);if(event.type==='response.audio_transcript.done'||event.type==='response.output_audio_transcript.done')saveVoiceMessage('assistant',event.transcript);};const mic=await navigator.mediaDevices.getUserMedia({audio:true});mic.getTracks().forEach(t=>voicePeer.addTrack(t,mic));const offer=await voicePeer.createOffer();await voicePeer.setLocalDescription(offer);const answer=await fetch('https://api.openai.com/v1/realtime/calls',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/sdp'},body:offer.sdp});if(!answer.ok)throw new Error('Realtime voice connection failed ('+answer.status+').');await voicePeer.setRemoteDescription({type:'answer',sdp:await answer.text()});$('voiceButton').textContent='End voice tutor';$('voiceStatus').textContent='Voice tutor connected. Speak naturally; interruptions are enabled.';}catch(e){if(voicePeer){voicePeer.close();voicePeer=null;}$('voiceStatus').textContent=e.message;}}
+async function createStudyGuide(){try{if(!selectedLectureId)throw new Error('Play the lesson with official captions visible first.');const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/study-guide',{method:'POST',headers:apiHeaders(),body:'{}'});const d=await r.json();if(!r.ok)throw new Error(d.error);$('studyGuide').textContent=d.summary+'\n\n'+d.chapters.map(c=>`[${fmtTime(c.start_seconds)}] ${c.title}\n${c.summary}`).join('\n\n');}catch(e){$('authStatus').textContent=e.message;}}
+async function sendTutorQuestion(){try{if(!selectedLectureId)throw new Error('Play the lesson with official captions visible first.');const question=$('chatQuestion').value.trim();if(!question)return;const box=$('chatHistory');box.textContent+='\n\nYou: '+question+'\nTutor: ';$('chatQuestion').value='';const r=await fetch(apiBase()+'/api/lectures/'+encodeURIComponent(selectedLectureId)+'/chat',{method:'POST',headers:apiHeaders(),body:JSON.stringify({question})});if(!r.ok){const e=await r.json();throw new Error(e.error||'Tutor request failed.');}const reader=r.body.getReader(),decoder=new TextDecoder();let pending='';while(true){const {value,done}=await reader.read();if(done)break;pending+=decoder.decode(value,{stream:true});const parts=pending.split('\n\n');pending=parts.pop();for(const part of parts){const line=part.split('\n').find(x=>x.startsWith('data: '));if(!line||line==='data: [DONE]')continue;const obj=JSON.parse(line.slice(6));if(obj.delta)box.textContent+=obj.delta;}}box.scrollTop=box.scrollHeight;}catch(e){$('authStatus').textContent=e.message;}}
+async function toggleVoiceTutor(){if(voicePeer){voicePeer.close();voicePeer=null;$('voiceAudio').srcObject=null;$('voiceButton').textContent='Start voice tutor';$('voiceStatus').textContent='Voice tutoring is off.';return;}try{if(!selectedLectureId)throw new Error('Play the lesson with official captions visible first.');const session=await fetch(apiBase()+'/api/realtime/session',{method:'POST',headers:apiHeaders(),body:JSON.stringify({lectureId:selectedLectureId})});const cfg=await session.json();if(!session.ok)throw new Error(cfg.error||'Could not start voice session.');const secret=cfg.value||cfg.client_secret?.value;if(!secret)throw new Error('Server did not return a temporary voice credential.');voicePeer=new RTCPeerConnection();voicePeer.ontrack=e=>$('voiceAudio').srcObject=e.streams[0];voicePeer.onconnectionstatechange=()=>$('voiceStatus').textContent='Voice session: '+voicePeer.connectionState;voiceChannel=voicePeer.createDataChannel('oai-events');voiceChannel.onmessage=e=>{const event=JSON.parse(e.data);if(event.type==='input_audio_buffer.speech_started')$('voiceStatus').textContent='Listening… (interruptions enabled)';if(event.type==='response.created')$('voiceStatus').textContent='Tutor is responding. Speak to interrupt.';if(event.type==='conversation.item.input_audio_transcription.completed')saveVoiceMessage('user',event.transcript);if(event.type==='response.audio_transcript.done'||event.type==='response.output_audio_transcript.done')saveVoiceMessage('assistant',event.transcript);};const mic=await navigator.mediaDevices.getUserMedia({audio:true});mic.getTracks().forEach(t=>voicePeer.addTrack(t,mic));const offer=await voicePeer.createOffer();await voicePeer.setLocalDescription(offer);const answer=await fetch('https://api.openai.com/v1/realtime/calls',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/sdp'},body:offer.sdp});if(!answer.ok)throw new Error('Realtime voice connection failed ('+answer.status+').');await voicePeer.setRemoteDescription({type:'answer',sdp:await answer.text()});$('voiceButton').textContent='End voice tutor';$('voiceStatus').textContent='Voice tutor connected. Speak naturally; interruptions are enabled.';}catch(e){if(voicePeer){voicePeer.close();voicePeer=null;}$('voiceStatus').textContent=e.message;}}
 
 // Canonical ActiveLessonState inside AI Tutor
 let aiLessonState = null;
 let contextEpoch = 0;
 let activeStudyMode = "SUMMARY";
+let lastCaptionSyncKey = "";
 
 function isBlockedDashboardOrGarbage(str) {
   if (!str || typeof str !== "string") return true;
@@ -341,13 +335,39 @@ function normalizeIncomingState(raw) {
     duration: Math.max(0, Number(obj.duration ?? obj.durationSec ?? 0) || 0),
     playbackState: String(obj.playbackState || "PAUSED"),
     transcript: String(obj.transcript || obj.transcriptText || ""),
+    captionSource: String(obj.captionSource || "unavailable"),
+    captionSegments: Array.isArray(obj.captionSegments) ? obj.captionSegments.filter(x => x && String(x.text || "").trim()).slice(-100) : [],
     notes: String(obj.notes || obj.lectureNotesText || "")
   };
 }
 
+
+async function syncVisibleCaptions(state) {
+  if (!tutorToken || !state.captionSegments.length) {
+    $("mediaAvailability").textContent = "Official visible captions detected. Sign in to save them to your private tutor library.";
+    return;
+  }
+  const fresh = state.captionSegments.slice(-100);
+  const last = fresh[fresh.length - 1];
+  const key = state.lessonId + "|" + fresh.length + "|" + (last && last.start) + "|" + (last && last.text);
+  if (key === lastCaptionSyncKey) return;
+  lastCaptionSyncKey = key;
+  try {
+    const r = await fetch(apiBase() + "/api/lessons/captions", {method:"POST",headers:apiHeaders(),body:JSON.stringify({lessonId:state.lessonId,title:state.lessonTitle,source:"visible-html5-text-track",segments:fresh})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Caption sync failed.");
+    selectedLectureId = d.id; localStorage.setItem("pw_tutor_lecture", d.id);
+    if (![...$("lectureSelect").options].some(o => o.value === d.id)) { const option = document.createElement("option"); option.value = d.id; option.textContent = d.title; $("lectureSelect").appendChild(option); }
+    $("lectureSelect").value = d.id;
+    $("mediaAvailability").textContent = "Saving captions shown during playback · " + d.captured + " cues. Only played captioned sections are covered; visual/audio analysis is unavailable.";
+    renderTranscript(d);
+  } catch (e) { $("mediaAvailability").textContent = "Visible captions found, but could not save them: " + e.message; }
+}
+
 function buildLessonBoundContent(mode) {
-  if (!aiLessonState || !aiLessonState.hasActiveLesson) return "Waiting for a resolved active lesson. Upload or paste an authorized transcript in Uploaded Lecture Tutor to generate study material.";
-  return "Portal lesson detected: " + aiLessonState.lessonTitle + " (" + aiLessonState.lessonId + "). This lesson context does not provide lecture content. Upload an authorized lecture file or paste its transcript above; summaries, answers, and timestamp references will use only that source.";
+  if (!aiLessonState || !aiLessonState.hasActiveLesson) return "Waiting for a resolved active lesson.";
+  const count = aiLessonState.captionSegments ? aiLessonState.captionSegments.length : 0;
+  return "Portal lesson detected: " + aiLessonState.lessonTitle + ". Captions captured while visibly shown: " + count + ". Coverage includes only played sections with official captions enabled. Visual/audio analysis and unplayed sections are unavailable.";
 }
 
 function generateStudyView(mode) {
@@ -361,7 +381,7 @@ function generateStudyView(mode) {
 
 function answerLearnerQuestion() {
   if (selectedLectureId) { $("chatQuestion").value = $("learnerQuestionInput").value; sendTutorQuestion(); return; }
-  $("questionAnswerBox").textContent = "Choose an uploaded lecture or transcript in Uploaded Lecture Tutor first. Answers and timestamps are grounded only in that authorized source.";
+  $("questionAnswerBox").textContent = "Sign in, then play the active lesson with its official captions visible. The tutor cannot understand lecture content from lesson metadata alone.";
 }
 
 function getNotesKey() {
@@ -445,6 +465,8 @@ function applySessionState(rawInput) {
                         aiLessonState.lessonTitle !== incoming.lessonTitle;
 
   aiLessonState = incoming;
+  if (incoming.captionSource === "visible-html5-text-track" && incoming.captionSegments.length) syncVisibleCaptions(incoming);
+  else $("mediaAvailability").textContent = "No official captions are currently visible to the authorized player. Enable captions if the provider offers them. No protected media, audio, or visuals are accessed.";
   try {
     localStorage.setItem(STORAGE_KEY_CANONICAL_LESSON, JSON.stringify(aiLessonState));
   } catch (e) {}

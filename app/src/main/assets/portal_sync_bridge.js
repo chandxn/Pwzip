@@ -24,7 +24,9 @@
       lastDuration: 0,
       lastPlaybackState: "PAUSED",
       lastEventAtMs: 0,
-      lastEventSource: "HTMLMediaElement.loadedmetadata"
+      lastEventSource: "HTMLMediaElement.loadedmetadata",
+      captionSegments: [],
+      captionKeys: Object.create(null)
     };
 
     function resetTrackedLessonContext() {
@@ -37,6 +39,8 @@
       trackedContext.lastPosition = -1;
       trackedContext.lastDuration = 0;
       trackedContext.lastPlaybackState = "PAUSED";
+      trackedContext.captionSegments = [];
+      trackedContext.captionKeys = Object.create(null);
     }
 
     var PROGRESS_TEXT_REGEX = /^(\d+%(\s*(complete|completed|watched|done))?|\d+\s*(\/|of)\s*\d+(\s*(lessons?|lectures?|modules?|videos?|chapters?|completed|done))?|\d{1,2}:\d{2}(:\d{2})?(\s*\/\s*\d{1,2}:\d{2}(:\d{2})?)?)$/i;
@@ -446,6 +450,10 @@
       }
 
       // Update trackedContext with confirmed current lesson identity
+      if (trackedContext.lessonId && trackedContext.lessonId !== meta.lessonId) {
+        trackedContext.captionSegments = [];
+        trackedContext.captionKeys = Object.create(null);
+      }
       trackedContext.lessonId = meta.lessonId;
       trackedContext.lessonTitle = meta.lessonTitle;
       trackedContext.courseId = meta.courseId;
@@ -473,6 +481,24 @@
       }
       trackedContext.lastPlaybackState = pState;
 
+      // Read only cues from a caption/subtitle track already set to "showing" by the player/user.
+      // Never enable tracks or fetch caption/media URLs; this captures only played, visible cues.
+      if (v && v.textTracks) {
+        for (var ti = 0; ti < v.textTracks.length; ti++) {
+          var track = v.textTracks[ti];
+          if (!track || (track.kind !== "captions" && track.kind !== "subtitles") || track.mode !== "showing" || !track.activeCues) continue;
+          for (var ci = 0; ci < track.activeCues.length; ci++) {
+            var cue = track.activeCues[ci];
+            var cueText = String(cue && cue.text || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 2000);
+            var start = Math.max(0, Number(cue && cue.startTime) || 0);
+            var end = Math.max(start, Number(cue && cue.endTime) || start);
+            var key = Math.round(start * 10) + "|" + Math.round(end * 10) + "|" + cueText;
+            if (!cueText || trackedContext.captionKeys[key]) continue;
+            trackedContext.captionKeys[key] = true;
+            if (trackedContext.captionSegments.length < 10000) trackedContext.captionSegments.push({ start: start, end: end, text: cueText });
+          }
+        }
+      }
       var mediaInfo = classifyActiveMedia(v, meta);
 
       return {
@@ -511,6 +537,8 @@
         attachments: meta.attachments,
         notes: meta.notes,
         transcript: meta.transcript,
+        captionSource: trackedContext.captionSegments.length ? "visible-html5-text-track" : "unavailable",
+        captionSegments: trackedContext.captionSegments.slice(-100),
         portalUrl: currentHref,
         lastUpdatedAt: nowMs,
         updatedAtMs: nowMs

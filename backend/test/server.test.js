@@ -15,6 +15,13 @@ test('server module exposes app and health route', async () => {
   const register=await fetch(`http://127.0.0.1:${port}/api/auth/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'learner@example.com',password:'a-long-test-password'})});
   assert.equal(register.status,201);
   const {token}=await register.json();
+  const captions=await fetch(`http://127.0.0.1:${port}/api/lessons/captions`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({lessonId:'lesson_987',title:'Caption lesson',source:'visible-html5-text-track',segments:[{start:12,end:15,text:'Visible authorized caption.'}]})});
+  assert.equal(captions.status,200);
+  const captured=await captions.json();
+  assert.equal(captured.captured,1);
+  assert.match(captured.transcript,/\[0:12\] Visible authorized caption\./);
+  const rejected=await fetch(`http://127.0.0.1:${port}/api/lessons/captions`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({lessonId:'lesson_987',title:'Caption lesson',source:'downloaded-media',segments:[{start:18,text:'Not allowed'}]})});
+  assert.equal(rejected.status,400);
   const created=await fetch(`http://127.0.0.1:${port}/api/lectures/transcript`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({title:'Test lecture',transcript:'An authorized transcript for testing the grounded tutor.'})});
   assert.equal(created.status,201);
   const lecture=await created.json();

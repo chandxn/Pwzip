@@ -78,7 +78,6 @@ class MainActivity : Activity(), View.OnClickListener {
         tabAiBtn = createNavButton("✨ AI Tutor", 1003, "#7C3AED")
 
         topBar.addView(tabPortalBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
-        topBar.addView(tabPlayerBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
         topBar.addView(tabAiBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
 
         val contentFrame = FrameLayout(this)
