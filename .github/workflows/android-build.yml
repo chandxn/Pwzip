@@ -56,7 +56,6 @@ jobs:
           disable-animations: true
           script: |
             adb shell svc wifi disable
-            adb shell svc data disable
             gradle --no-daemon :app:connectedDebugAndroidTest
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
