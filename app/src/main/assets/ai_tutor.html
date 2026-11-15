@@ -234,6 +234,7 @@ let aiLessonState = null;
 let contextEpoch = 0;
 let activeStudyMode = "SUMMARY";
 let lastCaptionSyncKey = "";
+let lastCaptionSyncAt = 0;
 
 function isBlockedDashboardOrGarbage(str) {
   if (!str || typeof str !== "string") return true;
@@ -350,8 +351,9 @@ async function syncVisibleCaptions(state) {
   const fresh = state.captionSegments.slice(-100);
   const last = fresh[fresh.length - 1];
   const key = state.lessonId + "|" + fresh.length + "|" + (last && last.start) + "|" + (last && last.text);
-  if (key === lastCaptionSyncKey) return;
+  if (key === lastCaptionSyncKey || Date.now() - lastCaptionSyncAt < 5000) return;
   lastCaptionSyncKey = key;
+  lastCaptionSyncAt = Date.now();
   try {
     const r = await fetch(apiBase() + "/api/lessons/captions", {method:"POST",headers:apiHeaders(),body:JSON.stringify({lessonId:state.lessonId,title:state.lessonTitle,source:"visible-html5-text-track",segments:fresh})});
     const d = await r.json();
