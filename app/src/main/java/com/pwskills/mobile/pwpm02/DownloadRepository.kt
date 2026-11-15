@@ -10,6 +10,8 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
+import android.os.Environment
+import java.io.File
 
 /**
  * File 2: DownloadRepository.kt
@@ -122,7 +124,7 @@ class DownloadRepository private constructor(private val context: Context) {
         }
 
         // Prevent duplicate active downloads for the same sourceUrl
-        val existing = database.findBySourceUrl(url)
+        val existing = database.findBySourceUrl(url)?.let(::reconcileCompletedItem)
         if (existing != null && (existing.status == DownloadStatus.QUEUED ||
                     existing.status == DownloadStatus.DOWNLOADING ||
                     existing.status == DownloadStatus.VERIFYING ||
@@ -189,6 +191,7 @@ class DownloadRepository private constructor(private val context: Context) {
 
     fun pauseDownload(requestId: String): Boolean {
         val existing = database.findById(requestId) ?: return false
+        if (existing.status !in setOf(DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING)) return false
         workManager.cancelUniqueWork("pw_pm_work_$requestId")
         database.upsert(
             existing.copy(
@@ -201,6 +204,7 @@ class DownloadRepository private constructor(private val context: Context) {
 
     fun resumeDownload(requestId: String): Boolean {
         val existing = database.findById(requestId) ?: return false
+        if (existing.status != DownloadStatus.PAUSED) return false
         val resumed = existing.copy(
             status = DownloadStatus.QUEUED,
             errorMessage = null,
@@ -214,19 +218,48 @@ class DownloadRepository private constructor(private val context: Context) {
     fun cancelDownload(requestId: String): Boolean {
         val existing = database.findById(requestId) ?: return false
         workManager.cancelUniqueWork("pw_pm_work_$requestId")
-        existing.destinationUri?.let { uri -> runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) } }
+        if (existing.destinationUri != null && !deleteDestination(existing)) return false
+        val tempPart = DownloadPaths.partialFile(context, requestId)
+        if (tempPart.exists() && !tempPart.delete()) return false
         database.delete(requestId)
-        val tempPart = java.io.File(context.cacheDir, "pw_pm_part_${requestId}.part")
-        if (tempPart.exists()) {
-            tempPart.delete()
-        }
         return true
+    }
+
+    fun deleteDownload(requestId: String): Boolean = cancelDownload(requestId)
+
+    private fun deleteDestination(item: DownloadItem): Boolean {
+        val raw = item.destinationUri ?: return true
+        val uri = Uri.parse(raw)
+        if (uri.scheme == "content") {
+            val expectedAuthority = android.provider.MediaStore.AUTHORITY
+            val allowedAuthorities = setOf(expectedAuthority, "media")
+            if (uri.authority !in allowedAuthorities) return false
+            return runCatching { context.contentResolver.delete(uri, null, null) > 0 }.getOrDefault(false)
+        }
+        val candidate = runCatching {
+            File(if (uri.scheme == "file") uri.path ?: return false else raw).canonicalFile
+        }.getOrNull() ?: return false
+        val externalDocs = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)?.canonicalFile
+        val appFiles = context.filesDir.canonicalFile
+        val publicDocs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).canonicalFile
+        val roots = listOfNotNull(
+            externalDocs?.let { File(it, "PW Triple/PW-PM").canonicalFile },
+            File(appFiles, "PW Triple/PW-PM").canonicalFile,
+            File(publicDocs, "PW Triple/PW-PM").canonicalFile
+        )
+        val ownedPath = roots.any { root -> candidate.path.startsWith(root.path + File.separator, true) }
+        if (!ownedPath || candidate.name != item.fileName) return false
+        return !candidate.exists() || candidate.delete()
     }
 
     fun retryDownload(requestId: String): Boolean {
         val existing = database.findById(requestId) ?: return false
+        if (existing.status != DownloadStatus.FAILED) return false
         val retried = existing.copy(
             status = DownloadStatus.QUEUED,
+            bytesDownloaded = 0L,
+            totalBytes = 0L,
+            progress = 0,
             errorMessage = null,
             updatedAt = System.currentTimeMillis()
         )
@@ -235,9 +268,72 @@ class DownloadRepository private constructor(private val context: Context) {
         return true
     }
 
-    fun getAllDownloads(): List<DownloadItem> = database.getAll()
+    fun getAllDownloads(): List<DownloadItem> = database.getAll().map { reconcileWorkStatus(reconcileCompletedItem(it)) }
 
     fun getDownload(requestId: String): DownloadItem? = database.findById(requestId)
+        ?.let(::reconcileCompletedItem)?.let(::reconcileWorkStatus)
+
+    fun savePlaybackPosition(mediaId: String, positionMs: Long) = database.savePlaybackPosition(mediaId, positionMs)
+    fun getPlaybackPosition(mediaId: String): Long = database.getPlaybackPosition(mediaId)
+
+    fun markUnavailable(requestId: String, error: String) {
+        val item = database.findById(requestId) ?: return
+        if (item.canTransitionTo(DownloadStatus.FAILED)) {
+            database.upsert(item.copy(status = DownloadStatus.FAILED, destinationUri = null,
+                errorMessage = error, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    private fun reconcileCompletedItem(item: DownloadItem): DownloadItem {
+        if (item.status != DownloadStatus.COMPLETED) return item
+        val uriString = item.destinationUri
+        val valid = if (uriString.isNullOrBlank()) false else runCatching {
+            val uri = Uri.parse(uriString)
+            if (uri.scheme == "content") {
+                context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                    descriptor.statSize < 0L || descriptor.statSize == item.bytesDownloaded
+                } ?: false
+            } else {
+                val path = if (uri.scheme == "file") uri.path else uriString
+                val file = File(path ?: return@runCatching false)
+                file.isFile && file.length() == item.bytesDownloaded
+            }
+        }.getOrDefault(false)
+        if (valid) return item
+        return item.copy(
+            status = DownloadStatus.FAILED,
+            destinationUri = null,
+            errorMessage = "Saved file is missing or has changed. Download it again to use the offline library.",
+            updatedAt = System.currentTimeMillis()
+        ).also(database::upsert)
+    }
+
+    private fun reconcileWorkStatus(item: DownloadItem): DownloadItem {
+        if (item.status !in setOf(DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING)) return item
+        return try {
+            val infos = workManager.getWorkInfosForUniqueWork("pw_pm_work_${item.requestId}")
+                .get(750, TimeUnit.MILLISECONDS)
+            val info = infos.firstOrNull()
+            val next = when (info?.state) {
+                androidx.work.WorkInfo.State.RUNNING -> DownloadStatus.DOWNLOADING
+                androidx.work.WorkInfo.State.ENQUEUED, androidx.work.WorkInfo.State.BLOCKED -> DownloadStatus.QUEUED
+                androidx.work.WorkInfo.State.FAILED -> DownloadStatus.FAILED
+                androidx.work.WorkInfo.State.CANCELLED -> DownloadStatus.PAUSED
+                androidx.work.WorkInfo.State.SUCCEEDED -> if (item.status == DownloadStatus.COMPLETED) DownloadStatus.COMPLETED else DownloadStatus.FAILED
+                null -> if (System.currentTimeMillis() - item.updatedAt > 30_000L) DownloadStatus.FAILED else return item
+            }
+            if (next == item.status) return item
+            val error = when (next) {
+                DownloadStatus.FAILED -> "Download task stopped before a verified file was saved. Retry to continue."
+                DownloadStatus.PAUSED -> "Download was stopped by the system. Resume when ready."
+                else -> null
+            }
+            item.copy(status = next, errorMessage = error, updatedAt = System.currentTimeMillis())
+                .also(database::upsert)
+        } catch (_: Exception) {
+            item
+        }
+    }
 
     companion object {
         @Volatile
@@ -248,5 +344,19 @@ class DownloadRepository private constructor(private val context: Context) {
                 INSTANCE ?: DownloadRepository(context.applicationContext).also { INSTANCE = it }
             }
         }
+    }
+}
+
+object DownloadPaths {
+    fun partialFile(context: Context, requestId: String): File {
+        // Pick up partials created by versions prior to v24, whose UUID names were not hashed.
+        val legacy = File(context.cacheDir, "pw_pm_part_${requestId}.part")
+        if (requestId.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) && legacy.isFile) {
+            return legacy
+        }
+        val safeId = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(requestId.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return File(context.cacheDir, "pw_pm_part_$safeId.part")
     }
 }

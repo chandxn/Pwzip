@@ -10,7 +10,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * SQLite persistence backing DownloadRepository so downloads survive app restarts.
  */
 class DownloadDatabase(context: Context) :
-    SQLiteOpenHelper(context, "pw_pm_downloads.db", null, 3) {
+    SQLiteOpenHelper(context, "pw_pm_downloads.db", null, 4) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -31,6 +31,7 @@ class DownloadDatabase(context: Context) :
             )
             """.trimIndent()
         )
+        db.execSQL("CREATE TABLE IF NOT EXISTS playback_positions (media_id TEXT PRIMARY KEY, position_ms INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -122,7 +123,23 @@ class DownloadDatabase(context: Context) :
     @Synchronized
     fun delete(requestId: String) {
         writableDatabase.delete("downloads", "request_id = ?", arrayOf(requestId))
+        writableDatabase.delete("playback_positions", "media_id = ?", arrayOf(requestId))
     }
+
+    @Synchronized
+    fun savePlaybackPosition(mediaId: String, positionMs: Long) {
+        val values = ContentValues().apply {
+            put("media_id", mediaId)
+            put("position_ms", positionMs.coerceAtLeast(0L))
+            put("updated_at", System.currentTimeMillis())
+        }
+        writableDatabase.insertWithOnConflict("playback_positions", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    @Synchronized
+    fun getPlaybackPosition(mediaId: String): Long = readableDatabase.query(
+        "playback_positions", arrayOf("position_ms"), "media_id = ?", arrayOf(mediaId), null, null, null
+    ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else 0L }
 
     private fun readRow(cursor: android.database.Cursor): DownloadItem {
         val statusName = cursor.getString(cursor.getColumnIndexOrThrow("status"))

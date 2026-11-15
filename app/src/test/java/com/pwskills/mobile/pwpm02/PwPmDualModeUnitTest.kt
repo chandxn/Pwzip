@@ -103,4 +103,46 @@ class PwPmDualModeUnitTest {
         assertFalse(DownloadWorker.isRetryableHttpStatus(404))
         assertFalse(DownloadWorker.isRetryableHttpStatus(401))
     }
+
+    @Test
+    fun testDownloadStateTransitionsRejectInvalidCompletionAndAllowRecovery() {
+        fun item(status: DownloadStatus) = DownloadItem(
+            requestId = "id", sourceUrl = "", fileName = "clip.mp4", mimeType = "video/mp4",
+            status = status, bytesDownloaded = 0, totalBytes = 0, progress = 0,
+            destinationUri = null, errorMessage = null, createdAt = 1, updatedAt = 1
+        )
+        assertTrue(item(DownloadStatus.DOWNLOADING).canTransitionTo(DownloadStatus.VERIFYING))
+        assertTrue(item(DownloadStatus.VERIFYING).canTransitionTo(DownloadStatus.COMPLETED))
+        assertFalse(item(DownloadStatus.DOWNLOADING).canTransitionTo(DownloadStatus.COMPLETED))
+        assertTrue(item(DownloadStatus.FAILED).canTransitionTo(DownloadStatus.QUEUED))
+        assertTrue(item(DownloadStatus.COMPLETED).canTransitionTo(DownloadStatus.FAILED))
+    }
+
+    @Test
+    fun testFileContainerVerificationSupportsOnlyMp4WebmAndPdfSignatures() {
+        val mp4 = ByteArray(16).also { "ftyp".toByteArray().copyInto(it, 4) }
+        val webm = byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte(), 0, 0, 0, 0)
+        val pdf = "%PDF-1.7".toByteArray()
+        val broken = "<!doctype".toByteArray()
+        assertNull(DownloadedMediaVerifier.validateHeaderBytes(mp4, mp4.size, false, "clip.mp4"))
+        assertNull(DownloadedMediaVerifier.validateHeaderBytes(webm, webm.size, false, "clip.webm"))
+        assertNull(DownloadedMediaVerifier.validateHeaderBytes(pdf, pdf.size, true, "notes.pdf"))
+        assertNotNull(DownloadedMediaVerifier.validateHeaderBytes(broken, broken.size, false, "clip.mp4"))
+        assertNotNull(DownloadedMediaVerifier.validateHeaderBytes(mp4, mp4.size, false, "clip.m3u8"))
+    }
+
+    @Test
+    fun testNativeDownloadJsonDoesNotExposeProviderUrlOrDestinationPath() {
+        val json = DownloadItem(
+            requestId = "id", sourceUrl = "https://cdn.example/signed?token=secret", fileName = "clip.mp4",
+            mimeType = "video/mp4", status = DownloadStatus.COMPLETED, bytesDownloaded = 100,
+            totalBytes = 100, progress = 100, destinationUri = "file:///data/user/0/private/clip.mp4",
+            errorMessage = null, createdAt = 1, updatedAt = 1
+        ).toJson().toString()
+        assertFalse(json.contains("sourceUrl"))
+        assertFalse(json.contains("cdn.example"))
+        assertFalse(json.contains("destinationUri"))
+        assertFalse(json.contains("/data/user"))
+        assertTrue(json.contains("hasPlayableFile"))
+    }
 }

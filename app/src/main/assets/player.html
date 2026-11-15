@@ -305,6 +305,7 @@ select, input[type="text"] {
       </div>
       <span class="pill blue" id="libraryCountBadge">0 Records</span>
     </div>
+    <div id="libraryStorageInfo" style="font-size:11px;color:var(--muted);margin-top:5px;">Reading device storage…</div>
 
     <div id="nativeActionBanner" class="hide" style="margin-top:8px;padding:9px 11px;border-radius:8px;font-size:11.5px;background:#090E1C;border:1px solid var(--border);overflow-wrap:anywhere;"></div>
 
@@ -369,7 +370,8 @@ let licenseStore = {};
 let activeQueueFilter = "ALL";
 let activeTransfers = {};
 let blobCacheById = {};
-let simulatedAvailableStorageBytes = 4 * 1024 * 1024 * 1024; // 4 GB default
+let cachedStorageInfo = null;
+let cachedStorageReadAt = 0;
 
 function isBlockedDashboardOrGarbage(str) {
   if (!str || typeof str !== "string") return true;
@@ -399,16 +401,29 @@ function fmtBytes(bytes) {
   return (bytes / 1048576).toFixed(2) + " MB";
 }
 
+function htmlEscape(value) {
+  return String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 function checkStorageAvailability(requiredBytes) {
   const needed = Math.max(25 * 1024 * 1024, Number(requiredBytes) || 0);
-  if (simulatedAvailableStorageBytes < needed) {
+  let available = 0;
+  try {
+    if (!window.NativeDownloadBridge?.getStorageDirectoryInfo) throw new Error("Device storage is not available.");
+    const info = JSON.parse(window.NativeDownloadBridge.getStorageDirectoryInfo());
+    available = Number(info.freeSpaceBytes) || 0;
+  } catch (_) {}
+  if (available < needed) {
     return {
       ok: false,
-      availableBytes: simulatedAvailableStorageBytes,
-      reason: "INSUFFICIENT_STORAGE: Available storage (" + fmtBytes(simulatedAvailableStorageBytes) + ") is below required threshold (" + fmtBytes(needed) + ")."
+      availableBytes: available,
+      reason: available > 0
+        ? "INSUFFICIENT_STORAGE: Available storage (" + fmtBytes(available) + ") is below required threshold (" + fmtBytes(needed) + ")."
+        : "STORAGE_UNAVAILABLE: Could not read available device storage."
     };
   }
-  return { ok: true, availableBytes: simulatedAvailableStorageBytes };
+  return { ok: true, availableBytes: available };
 }
 
 /**
@@ -1651,21 +1666,36 @@ function refreshNativeDownloadHistory() {
     const response = JSON.parse(window.NativeDownloadBridge.getDownloadsStatusJson());
     if (!response.ok) throw new Error("Native download history unavailable");
     downloadRecords = (response.downloads || []).map(d => ({
-      id: d.requestId, sourceUrl: d.sourceUrl, fileName: d.fileName,
+      id: d.requestId, fileName: d.fileName,
       lessonTitle: d.fileName, courseId: "Not provided by download source", courseTitle: "Not provided by download source",
       lessonId: "Not provided by download source", downloadMode: d.downloadMode || "SHARED_EXPORT", mediaFormat: d.mimeType,
       providerAuthStatus: "PROVIDER_AUTHORIZED", selectedResolution: "Original",
-      status: d.status, progress: d.progress, bytesWrittenToPhoneStorage: d.bytesDownloaded,
-      totalBytes: d.totalBytes, exportStatus: d.status === "COMPLETED" ? "VERIFIED_AND_SAVED" : "IN_PROGRESS",
+      status: d.status, progress: Number(d.progress) || 0, bytesWrittenToPhoneStorage: Number(d.bytesDownloaded) || 0,
+      totalBytes: Number(d.totalBytes), exportStatus: d.status === "COMPLETED" ? "VERIFIED_AND_SAVED" : "IN_PROGRESS",
       offlinePlaybackAvailability: d.downloadMode === "APP_OFFLINE"
         ? (d.status === "COMPLETED" ? "CACHED; PROVIDER LICENSE APPLIES" : "NOT_READY")
         : (d.status === "COMPLETED" ? "AVAILABLE_WHILE_FILE_REMAINS" : "NOT_READY"),
       licenseExpiryText: "Not applicable", failureReason: d.errorMessage || "None",
-      destinationUri: d.destinationUri, isDevFixture: false, native: true
+      hasPlayableFile: Boolean(d.hasPlayableFile), isDevFixture: false, native: true
     }));
     renderDownloadQueue();
+    refreshStorageSummary(false);
   } catch (e) {
     showActionBanner("Download history is temporarily unavailable: " + (e.message || e), true);
+  }
+}
+
+function refreshStorageSummary(force) {
+  const now = Date.now();
+  if (!force && cachedStorageInfo && now - cachedStorageReadAt < 15000) return;
+  try {
+    cachedStorageInfo = JSON.parse(window.NativeDownloadBridge.getStorageDirectoryInfo());
+    cachedStorageReadAt = now;
+    $("libraryStorageInfo").textContent = "Saved downloads: " + fmtBytes(cachedStorageInfo.savedFilesBytes) +
+      " · Provider offline cache: " + fmtBytes(cachedStorageInfo.appOfflineCacheBytes) +
+      " · Free: " + fmtBytes(cachedStorageInfo.freeSpaceBytes);
+  } catch (_) {
+    $("libraryStorageInfo").textContent = "Storage usage is currently unavailable.";
   }
 }
 
@@ -1717,6 +1747,7 @@ function renderDownloadQueue() {
   }
 
   container.innerHTML = filtered.map(r => {
+    const actionId = /^[A-Za-z0-9._-]{1,128}$/.test(String(r.id || "")) ? String(r.id) : "";
     const isCompleted = r.status === "COMPLETED";
     const isPaused = r.status === "PAUSED";
     const isFailed = r.status === "FAILED" || r.status === "UNSUPPORTED" || r.status === "EXPIRED";
@@ -1726,33 +1757,33 @@ function renderDownloadQueue() {
     return `
       <div class="dl-item">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
-          <b style="color:#F8FAFC;font-size:12.5px;overflow-wrap:anywhere;">${r.lessonTitle}</b>
+          <b style="color:#F8FAFC;font-size:12.5px;overflow-wrap:anywhere;">${htmlEscape(r.lessonTitle)}</b>
           <div style="display:flex;gap:5px;flex-wrap:wrap;">
-            <span class="pill ${modeCls}">${r.downloadMode}</span>
-            <span class="pill ${badgeCls}">${r.status}</span>
+            <span class="pill ${modeCls}">${htmlEscape(r.downloadMode)}</span>
+            <span class="pill ${badgeCls}">${htmlEscape(r.status)}</span>
           </div>
         </div>
 
         <div class="dl-field-grid">
-          <div><span class="meta-k">1. Lesson &amp; Course:</span><br><b style="color:#E2E8F0;">${r.lessonId} (${r.courseId})</b></div>
-          <div><span class="meta-k">2. Download Mode:</span><br><b style="color:#38BDF8;">${r.downloadMode}</b></div>
-          <div><span class="meta-k">3. Media Type:</span><br><b style="color:#E2E8F0;">${r.mediaFormat}</b></div>
-          <div><span class="meta-k">4. Provider Auth:</span><br><b style="color:#6EE7B7;">${r.providerAuthStatus}</b></div>
-          <div><span class="meta-k">5. Quality:</span><br><b style="color:#E2E8F0;">${r.selectedResolution}</b></div>
+          <div><span class="meta-k">1. Lesson &amp; Course:</span><br><b style="color:#E2E8F0;">${htmlEscape(r.lessonId)} (${htmlEscape(r.courseId)})</b></div>
+          <div><span class="meta-k">2. Download Mode:</span><br><b style="color:#38BDF8;">${htmlEscape(r.downloadMode)}</b></div>
+          <div><span class="meta-k">3. Media Type:</span><br><b style="color:#E2E8F0;">${htmlEscape(r.mediaFormat)}</b></div>
+          <div><span class="meta-k">4. Provider Auth:</span><br><b style="color:#6EE7B7;">${htmlEscape(r.providerAuthStatus)}</b></div>
+          <div><span class="meta-k">5. Quality:</span><br><b style="color:#E2E8F0;">${htmlEscape(r.selectedResolution)}</b></div>
           <div><span class="meta-k">6. Progress &amp; Bytes:</span><br><b style="color:#93C5FD;">${r.progress}% (${fmtBytes(r.bytesWrittenToPhoneStorage)} / ${r.totalBytes > 0 ? fmtBytes(r.totalBytes) : "—"})</b></div>
-          <div class="dl-field-full"><span class="meta-k">7. Download State &amp; 8. Export Status:</span><br><code style="color:#6EE7B7;overflow-wrap:anywhere;">[${r.status}] ${r.exportStatus}</code></div>
-          <div class="dl-field-full"><span class="meta-k">9. Offline Playback Availability:</span><br><b style="color:#7DD3FC;overflow-wrap:anywhere;">${r.offlinePlaybackAvailability}</b></div>
-          <div class="dl-field-full"><span class="meta-k">10. License Expiry:</span><br><span style="color:#FCD34D;overflow-wrap:anywhere;">${r.licenseExpiryText}</span></div>
-          <div class="dl-field-full"><span class="meta-k">11. Failure Reason:</span><br><span style="color:${r.failureReason && r.failureReason !== 'None' ? '#FCA5A5' : '#94A3B8'};overflow-wrap:anywhere;">${r.failureReason || 'None'}</span></div>
+          <div class="dl-field-full"><span class="meta-k">7. Download State &amp; 8. Export Status:</span><br><code style="color:#6EE7B7;overflow-wrap:anywhere;">[${htmlEscape(r.status)}] ${htmlEscape(r.exportStatus)}</code></div>
+          <div class="dl-field-full"><span class="meta-k">9. Offline Playback Availability:</span><br><b style="color:#7DD3FC;overflow-wrap:anywhere;">${htmlEscape(r.offlinePlaybackAvailability)}</b></div>
+          <div class="dl-field-full"><span class="meta-k">10. License Expiry:</span><br><span style="color:#FCD34D;overflow-wrap:anywhere;">${htmlEscape(r.licenseExpiryText)}</span></div>
+          <div class="dl-field-full"><span class="meta-k">11. Failure Reason:</span><br><span style="color:${r.failureReason && r.failureReason !== 'None' ? '#FCA5A5' : '#94A3B8'};overflow-wrap:anywhere;">${htmlEscape(r.failureReason || 'None')}</span></div>
         </div>
 
         <div class="dl-actions">
-          ${isCompleted && r.destinationUri ? `<button class="btn-success" onclick="playItemOffline('${r.id}')">📂 Open Saved File</button>` : ""}
-          ${r.status === "DOWNLOADING" ? `<button class="btn-warning" onclick="pauseDownloadItem('${r.id}')">⏸ Pause</button>` : ""}
-          ${isPaused ? `<button class="btn-primary" onclick="resumeDownloadItem('${r.id}')">▶ Resume</button>` : ""}
-          ${isFailed && r.status !== "UNSUPPORTED" ? `<button class="btn-primary" onclick="retryDownloadItem('${r.id}')">🔄 Retry</button>` : ""}
-          ${r.providerAuthStatus === "AUTHORIZED_PERSISTENT_DRM" ? `<button class="btn-primary" onclick="renewOfflineLicense('${r.id}')">🔑 Renew License</button>` : ""}
-          <button class="btn-danger" onclick="cancelDownloadItem('${r.id}')">🗑 Release / Delete</button>
+          ${actionId && isCompleted && r.hasPlayableFile ? `<button class="btn-success" onclick="playItemOffline('${actionId}')">▶ Open / Play</button>` : ""}
+          ${actionId && r.status === "DOWNLOADING" ? `<button class="btn-warning" onclick="pauseDownloadItem('${actionId}')">⏸ Pause</button>` : ""}
+          ${actionId && isPaused ? `<button class="btn-primary" onclick="resumeDownloadItem('${actionId}')">▶ Resume</button>` : ""}
+          ${actionId && isFailed && r.status !== "UNSUPPORTED" ? `<button class="btn-primary" onclick="retryDownloadItem('${actionId}')">🔄 Retry</button>` : ""}
+          ${actionId && r.providerAuthStatus === "AUTHORIZED_PERSISTENT_DRM" ? `<button class="btn-primary" onclick="renewOfflineLicense('${actionId}')">🔑 Renew License</button>` : ""}
+          ${actionId ? `<button class="btn-danger" onclick="cancelDownloadItem('${actionId}')">🗑 Release / Delete</button>` : ""}
         </div>
       </div>
     `;

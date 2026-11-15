@@ -35,6 +35,7 @@ class PwPhoneStorageExporter(private val context: Context) {
         }
 
         val relativeFolder = "Documents/PW Triple/PW-PM/$subFolder"
+        var pendingUri: android.net.Uri? = null
 
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -49,34 +50,53 @@ class PwPhoneStorageExporter(private val context: Context) {
 
                 val itemUri = resolver.insert(collection, values)
                     ?: return exportFallbackToAppExternalFiles(sourceFile, fileName, subFolder)
+                pendingUri = itemUri
 
-                resolver.openOutputStream(itemUri)?.use { out ->
+                val copied = resolver.openOutputStream(itemUri)?.use { out ->
                     FileInputStream(sourceFile).use { input ->
-                        input.copyTo(out, bufferSize = 32 * 1024)
+                        val count = input.copyTo(out, bufferSize = 32 * 1024)
                         out.flush()
+                        count
                     }
-                } ?: return ExportResult(false, null, "Failed to open MediaStore OutputStream.")
+                }
+                if (copied == null || copied != sourceFile.length()) {
+                    resolver.delete(itemUri, null, null)
+                    pendingUri = null
+                    return ExportResult(false, null, "Saved file size did not match the verified source; incomplete file was removed.")
+                }
 
                 val publishValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.IS_PENDING, 0)
                 }
-                resolver.update(itemUri, publishValues, null, null)
+                if (resolver.update(itemUri, publishValues, null, null) <= 0) {
+                    resolver.delete(itemUri, null, null)
+                    pendingUri = null
+                    return ExportResult(false, null, "Could not publish the verified file in MediaStore.")
+                }
+                pendingUri = null
                 ExportResult(true, itemUri.toString(), null)
             } else {
                 val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-                val targetDir = File(docsDir, "PW Triple/PW-PM/$subFolder")
-                if (!targetDir.exists()) targetDir.mkdirs()
+            val targetDir = File(docsDir, "PW Triple/PW-PM/$subFolder")
+            if (!targetDir.exists() && !targetDir.mkdirs()) return ExportResult(false, null, "Could not create the download folder.")
                 val destFile = File(targetDir, fileName)
-                FileInputStream(sourceFile).use { input ->
+            if (destFile.exists()) return ExportResult(false, null, "A file with this name already exists; existing content was preserved.")
+            val copied = FileInputStream(sourceFile).use { input ->
                     FileOutputStream(destFile).use { out ->
-                        input.copyTo(out, bufferSize = 32 * 1024)
+                    val count = input.copyTo(out, bufferSize = 32 * 1024)
                         out.flush()
+                    count
                     }
                 }
+            if (copied != sourceFile.length() || destFile.length() != sourceFile.length()) {
+                destFile.delete()
+                return ExportResult(false, null, "Saved file size did not match the verified source.")
+            }
                 ExportResult(true, destFile.absolutePath, null)
             }
         } catch (e: Exception) {
-            exportFallbackToAppExternalFiles(sourceFile, fileName, subFolder)
+            pendingUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+            ExportResult(false, null, "Could not safely publish the verified file: ${e.message ?: e.javaClass.simpleName}")
         }
     }
 
@@ -88,13 +108,19 @@ class PwPhoneStorageExporter(private val context: Context) {
         return try {
             val base = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: context.filesDir
             val targetDir = File(base, "PW Triple/PW-PM/$subFolder")
-            if (!targetDir.exists()) targetDir.mkdirs()
+            if (!targetDir.exists() && !targetDir.mkdirs()) return ExportResult(false, null, "Could not create the app download folder.")
             val destFile = File(targetDir, fileName)
-            FileInputStream(sourceFile).use { input ->
+            if (destFile.exists()) return ExportResult(false, null, "A file with this name already exists; existing content was preserved.")
+            val copied = FileInputStream(sourceFile).use { input ->
                 FileOutputStream(destFile).use { out ->
-                    input.copyTo(out, bufferSize = 32 * 1024)
+                    val count = input.copyTo(out, bufferSize = 32 * 1024)
                     out.flush()
+                    count
                 }
+            }
+            if (copied != sourceFile.length() || destFile.length() != sourceFile.length()) {
+                destFile.delete()
+                return ExportResult(false, null, "Saved file size did not match the verified source.")
             }
             ExportResult(true, destFile.absolutePath, null)
         } catch (e: Exception) {

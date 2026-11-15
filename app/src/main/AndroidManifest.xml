@@ -36,6 +36,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".OfflinePlayerActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
+
         <!-- Official AndroidX Media3 DownloadService for adaptive HLS/DASH & Widevine cache downloads -->
         <service
             android:name=".PwPmMedia3DownloadService"

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Environment
 import android.content.Intent
 import android.net.Uri
+import androidx.media3.common.MimeTypes
 import android.webkit.JavascriptInterface
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,6 @@ class NativeDownloadBridge(
 
     @JavascriptInterface
     fun checkBridgeHealthJson(): String {
-        val docsRoot = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
         return JSONObject()
             .put("ok", true)
             .put("ready", true)
@@ -44,8 +44,7 @@ class NativeDownloadBridge(
             .put("packageId", context.packageName)
             .put("sharedExportVideosRoot", "Documents/PW Triple/PW-PM/Videos/")
             .put("sharedExportFilesRoot", "Documents/PW Triple/PW-PM/Files/")
-            .put("appOfflineCacheDir", media3Engine.downloadCacheDirectory.absolutePath)
-            .put("usableSpaceBytes", docsRoot.usableSpace)
+            .put("usableSpaceBytes", context.filesDir.usableSpace)
             .toString()
     }
 
@@ -176,7 +175,6 @@ class NativeDownloadBridge(
                 .put("requestId", req.id)
                 .put("downloadMode", DownloadMode.APP_OFFLINE.name)
                 .put("status", DownloadStatus.QUEUED.name)
-                .put("cacheDir", media3Engine.downloadCacheDirectory.absolutePath)
                 .put("hasStoredWidevineLicense", storedKeySetId != null)
                 .toString()
         } catch (e: Exception) {
@@ -234,7 +232,7 @@ class NativeDownloadBridge(
     @JavascriptInterface
     fun pauseDownload(requestId: String): String {
         val updated = repository.pauseDownload(requestId)
-        val offline = media3Engine.downloadManager.currentDownloads.firstOrNull { it.request.id == requestId }
+        val offline = findMedia3Download(requestId)
         if (!updated && offline != null) media3Engine.downloadManager.setStopReason(requestId, 1)
         return JSONObject()
             .put("ok", updated || offline != null)
@@ -246,7 +244,7 @@ class NativeDownloadBridge(
     @JavascriptInterface
     fun resumeDownload(requestId: String): String {
         val updated = repository.resumeDownload(requestId)
-        val offline = media3Engine.downloadManager.currentDownloads.firstOrNull { it.request.id == requestId }
+        val offline = findMedia3Download(requestId)
         if (!updated && offline != null) media3Engine.downloadManager.setStopReason(requestId, Download.STOP_REASON_NONE)
         return JSONObject()
             .put("ok", updated || offline != null)
@@ -258,7 +256,7 @@ class NativeDownloadBridge(
     @JavascriptInterface
     fun cancelDownload(requestId: String): String {
         val updated = repository.cancelDownload(requestId)
-        val offline = media3Engine.downloadManager.currentDownloads.firstOrNull { it.request.id == requestId }
+        val offline = findMedia3Download(requestId)
         if (!updated && offline != null) media3Engine.downloadManager.removeDownload(requestId)
         media3Engine.removeAppOfflineDownload(context, requestId)
         return JSONObject()
@@ -271,7 +269,7 @@ class NativeDownloadBridge(
     @JavascriptInterface
     fun retryDownload(requestId: String): String {
         val updated = repository.retryDownload(requestId)
-        val offline = media3Engine.downloadManager.currentDownloads.firstOrNull { it.request.id == requestId }
+        val offline = findMedia3Download(requestId)
         if (!updated && offline != null) {
             media3Engine.downloadManager.setStopReason(requestId, Download.STOP_REASON_NONE)
             media3Engine.downloadManager.addDownload(offline.request)
@@ -286,19 +284,67 @@ class NativeDownloadBridge(
     @JavascriptInterface
     fun openDownloadedFile(requestId: String): String {
         val item = repository.getDownload(requestId)
+        if (item != null) {
+            if (item.status != DownloadStatus.COMPLETED || item.destinationUri.isNullOrBlank()) {
+                return JSONObject().put("ok", false).put("error", item.errorMessage ?: "File is not fully downloaded and verified").toString()
+            }
+            val uri = Uri.parse(item.destinationUri).let { if (it.scheme == null) Uri.fromFile(File(item.destinationUri)) else it }
+            val verification = DownloadedMediaVerifier.verify(context, uri, item.fileName, item.mimeType)
+            if (verification != null) {
+                repository.markUnavailable(requestId, verification)
+                return JSONObject().put("ok", false).put("error", verification).toString()
+            }
+            if (item.mimeType.contains("pdf", true) || item.fileName.endsWith(".pdf", true)) {
+                return openPdf(uri, item.mimeType)
+            }
+            if (!DownloadedMediaVerifier.isSupportedVideo(item.fileName, item.mimeType)) {
+                return JSONObject().put("ok", false).put("error", "Only verified MP4, M4V and WebM files can be played in the app.").toString()
+            }
+            return launchOfflinePlayer(requestId, uri, item.mimeType, item.fileName, cacheOnly = false, lessonId = requestId, requiresLicense = false)
+        }
+
+        val media3 = findMedia3Download(requestId)
             ?: return JSONObject().put("ok", false).put("error", "Download not found").toString()
-        if (item.status != DownloadStatus.COMPLETED || item.destinationUri.isNullOrBlank()) {
-            return JSONObject().put("ok", false).put("error", "File is not fully downloaded and verified").toString()
+        if (media3.state != Download.STATE_COMPLETED) {
+            return JSONObject().put("ok", false).put("error", "Provider download is not complete yet.").toString()
         }
-        return try {
-            val uri = Uri.parse(item.destinationUri)
-            val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, item.mimeType)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-            JSONObject().put("ok", true).toString()
-        } catch (e: Exception) {
-            JSONObject().put("ok", false).put("error", e.message ?: "No app can open this file").toString()
+        val keySet = media3.request.keySetId
+        val license = licenseStorage.getLicenseMetadata(requestId)
+        if (keySet != null && (license == null || license.keySetId.isEmpty() || license.isExpired() || license.licenseServerUrl.isBlank())) {
+            return JSONObject().put("ok", false).put("error", "The provider's offline license is missing or expired.").toString()
         }
+        val mime = media3.request.mimeType ?: media3Engine.inferMedia3MimeType(media3.request.uri.toString())
+        val supportedOffline = mime in setOf(MimeTypes.APPLICATION_M3U8, MimeTypes.APPLICATION_MPD) ||
+            mime.startsWith("video/") || mime.startsWith("audio/")
+        if (!supportedOffline) return JSONObject().put("ok", false).put("error", "This provider media format is not supported offline.").toString()
+        launchOfflinePlayer(requestId, media3.request.uri, mime, requestId, cacheOnly = true, lessonId = requestId, requiresLicense = keySet != null)
+    }
+
+    private fun launchOfflinePlayer(
+        id: String, uri: Uri, mime: String, title: String, cacheOnly: Boolean, lessonId: String, requiresLicense: Boolean
+    ): String = try {
+        context.startActivity(Intent(context, OfflinePlayerActivity::class.java).apply {
+            putExtra(OfflinePlayerActivity.EXTRA_MEDIA_ID, id)
+            putExtra(OfflinePlayerActivity.EXTRA_URI, uri.toString())
+            putExtra(OfflinePlayerActivity.EXTRA_MIME, mime)
+            putExtra(OfflinePlayerActivity.EXTRA_TITLE, title)
+            putExtra(OfflinePlayerActivity.EXTRA_FILE_NAME, title)
+            putExtra(OfflinePlayerActivity.EXTRA_CACHE_ONLY, cacheOnly)
+            putExtra(OfflinePlayerActivity.EXTRA_LESSON_ID, lessonId)
+            putExtra(OfflinePlayerActivity.EXTRA_REQUIRES_LICENSE, requiresLicense)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+        JSONObject().put("ok", true).toString()
+    } catch (e: Exception) {
+        JSONObject().put("ok", false).put("error", e.message ?: "Could not open offline player").toString()
+    }
+
+    private fun openPdf(uri: Uri, mime: String): String = try {
+        context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+        JSONObject().put("ok", true).toString()
+    } catch (_: Exception) {
+        JSONObject().put("ok", false).put("error", "No installed PDF viewer can open this saved file.").toString()
     }
 
     @JavascriptInterface
@@ -308,27 +354,27 @@ class NativeDownloadBridge(
         for (item in items) {
             arr.put(item.toJson())
         }
-        for (download in media3Engine.downloadManager.currentDownloads) {
+        for (download in getAllMedia3Downloads()) {
             val state = when (download.state) {
                 Download.STATE_QUEUED, Download.STATE_RESTARTING -> "QUEUED"
                 Download.STATE_DOWNLOADING -> "DOWNLOADING"
                 Download.STATE_STOPPED -> "PAUSED"
                 Download.STATE_COMPLETED -> "COMPLETED"
                 Download.STATE_FAILED -> "FAILED"
+                Download.STATE_REMOVING -> "REMOVING"
                 else -> "QUEUED"
             }
             val progress = download.percentDownloaded.takeIf { it >= 0f }?.toInt() ?: 0
             arr.put(JSONObject()
                 .put("requestId", download.request.id)
-                .put("sourceUrl", download.request.uri.toString())
                 .put("fileName", download.request.id)
                 .put("mimeType", download.request.mimeType ?: "application/octet-stream")
                 .put("status", state)
                 .put("bytesDownloaded", download.bytesDownloaded)
-                .put("totalBytes", -1)
+                .put("totalBytes", download.contentLength)
                 .put("progress", progress)
-                .put("destinationUri", JSONObject.NULL)
-                .put("errorMessage", if (download.failureReason != Download.FAILURE_REASON_NONE) "Provider-authorized offline download failed." else JSONObject.NULL)
+                .put("hasPlayableFile", download.state == Download.STATE_COMPLETED)
+                .put("errorMessage", if (download.failureReason != Download.FAILURE_REASON_NONE) "Provider-authorized offline download failed (code ${download.failureReason})." else JSONObject.NULL)
                 .put("downloadMode", DownloadMode.APP_OFFLINE.name))
         }
         return JSONObject()
@@ -340,23 +386,34 @@ class NativeDownloadBridge(
 
     @JavascriptInterface
     fun getStorageDirectoryInfo(): String {
-        val docsRoot = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-        val pwRoot = File(docsRoot, "PW Triple/PW-PM")
-        val videosDir = File(pwRoot, "Videos")
-        val filesDir = File(pwRoot, "Files")
+        val savedBytes = repository.getAllDownloads().filter { it.status == DownloadStatus.COMPLETED }.sumOf { it.bytesDownloaded }
+        val cacheBytes = directorySize(media3Engine.downloadCacheDirectory)
 
         return JSONObject()
             .put("ok", true)
-            .put("root", "Documents/PW Triple/PW-PM/Videos/")
+            .put("root", "Documents/PW Triple/PW-PM/")
             .put("engine", "AndroidX Media3 + Android WorkManager")
-            .put("videosFolder", "Documents/PW Triple/PW-PM/Videos/")
-            .put("filesFolder", "Documents/PW Triple/PW-PM/Files/")
-            .put("videosAbsolutePath", videosDir.absolutePath)
-            .put("filesAbsolutePath", filesDir.absolutePath)
-            .put("appOfflineCachePath", media3Engine.downloadCacheDirectory.absolutePath)
-            .put("freeSpaceBytes", docsRoot.usableSpace)
+            .put("savedFilesBytes", savedBytes)
+            .put("appOfflineCacheBytes", cacheBytes)
+            .put("usedBytes", savedBytes + cacheBytes)
+            .put("freeSpaceBytes", context.filesDir.usableSpace)
             .toString()
     }
+
+    private fun directorySize(file: File): Long = if (!file.exists()) 0L else if (file.isFile) file.length()
+        else file.listFiles()?.sumOf(::directorySize) ?: 0L
+
+    private fun findMedia3Download(requestId: String): Download? = runCatching {
+        media3Engine.downloadManager.downloadIndex.getDownload(requestId)
+    }.getOrNull()
+
+    private fun getAllMedia3Downloads(): List<Download> = runCatching {
+        media3Engine.downloadManager.downloadIndex.getDownloads(intArrayOf()).use { cursor ->
+            val downloads = mutableListOf<Download>()
+            while (cursor.moveToNext()) downloads.add(cursor.download)
+            downloads
+        }
+    }.getOrDefault(emptyList())
 
     fun shutdown() {
         scope.cancel()

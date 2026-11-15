@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import android.content.pm.ServiceInfo
-import android.media.MediaMetadataRetriever
 import androidx.core.app.NotificationCompat
 import androidx.work.ForegroundInfo
 import androidx.work.CoroutineWorker
@@ -14,7 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 import java.io.IOException
@@ -48,7 +46,7 @@ class DownloadWorker(
             return@withContext Result.failure()
         }
 
-        val tempFile = File(applicationContext.cacheDir, "pw_pm_part_${requestId}.part")
+        val tempFile = DownloadPaths.partialFile(applicationContext, requestId)
         var connection: HttpURLConnection? = null
 
         try {
@@ -159,7 +157,7 @@ class DownloadWorker(
                 errorMessage = null
             )
 
-            val verificationError = verifyDownloadedFile(tempFile, rawFileName, mimeType)
+            val verificationError = DownloadedMediaVerifier.verify(tempFile, rawFileName, mimeType)
             if (verificationError != null) {
                 tempFile.delete()
                 markFailed(requestId, verificationError)
@@ -233,61 +231,6 @@ class DownloadWorker(
         } else ForegroundInfo(notificationId, notification)
     }
 
-    private fun verifyDownloadedFile(file: File, fileName: String, mimeType: String): String? {
-        if (!file.exists() || file.length() <= 0L) {
-            return "Verification failed: downloaded file is empty (0 bytes)."
-        }
-
-        val header = ByteArray(16)
-        RandomAccessFile(file, "r").use { raf ->
-            val read = raf.read(header)
-            if (read < 8) {
-                return "Verification failed: file shorter than 8-byte header."
-            }
-        }
-
-        val headerAscii = String(header, Charsets.US_ASCII)
-        if (headerAscii.trimStart().startsWith("#EXTM3U") || headerAscii.trimStart().startsWith("<MPD")) {
-            return "Verification failed: file is an HLS/DASH manifest, not a media container."
-        }
-
-        val isPdf = mimeType.contains("pdf", ignoreCase = true) || fileName.endsWith(".pdf", ignoreCase = true)
-        if (isPdf) {
-            if (!headerAscii.startsWith("%PDF-")) {
-                return "Verification failed: PDF magic header (%PDF-) missing."
-            }
-            return null
-        }
-
-        // Video container verification: check ISO BMFF `ftyp` at offset 4
-        val boxType = String(header, 4, 4, Charsets.US_ASCII)
-        if (boxType != "ftyp" && boxType != "moov" && boxType != "wide") {
-            return "Verification failed: invalid MP4 container box '$boxType' (expected 'ftyp')."
-        }
-
-        // MediaMetadataRetriever check for duration and playable video/audio track
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(file.absolutePath)
-            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            val hasVideo = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO)
-            val hasAudio = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO)
-            val durationMs = durationStr?.toLongOrNull() ?: 0L
-            if (durationMs <= 0L && hasVideo == null && hasAudio == null) {
-                "Verification failed: MediaMetadataRetriever found no playable tracks or duration."
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            "Verification failed during media metadata probe: ${e.message}"
-        } finally {
-            try {
-                retriever.release()
-            } catch (_: Exception) {
-            }
-        }
-    }
-
     private fun updateState(
         requestId: String,
         status: DownloadStatus,
@@ -296,6 +239,7 @@ class DownloadWorker(
         errorMessage: String?
     ) {
         val existing = database.findById(requestId) ?: return
+        if (!existing.canTransitionTo(status)) return
         val progress = if (totalBytes > 0L) {
             ((bytesDownloaded * 100L) / totalBytes).toInt().coerceIn(0, 100)
         } else 0

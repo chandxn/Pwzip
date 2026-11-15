@@ -30,20 +30,15 @@ class PwOfflinePlayer(private val context: Context) {
         val existing = exoPlayer
         if (existing != null) return existing
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(downloadEngine.offlineCacheDataSourceFactory)
-
-        return ExoPlayer.Builder(context)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .build()
-            .also { exoPlayer = it }
+        return ExoPlayer.Builder(context).build().also { exoPlayer = it }
     }
 
     fun prepareOfflinePlayback(
         lessonId: String,
         cachedUri: String,
         mimeType: String,
-        licenseServerUrl: String? = null
+        licenseServerUrl: String? = null,
+        offlineCacheOnly: Boolean = false
     ): ExoPlayer {
         val player = createOrGetPlayer()
         val mediaItemBuilder = MediaItem.Builder()
@@ -60,7 +55,16 @@ class PwOfflinePlayer(private val context: Context) {
             mediaItemBuilder.setDrmConfiguration(drmConfig)
         }
 
-        player.setMediaItem(mediaItemBuilder.build())
+        if (offlineCacheOnly) {
+            player.setMediaSource(
+                DefaultMediaSourceFactory(context)
+                    .setDataSourceFactory(downloadEngine.offlineCacheDataSourceFactory)
+                    .createMediaSource(mediaItemBuilder.build())
+            )
+        } else {
+            player.setMediaItem(mediaItemBuilder.build())
+        }
+
         player.prepare()
         return player
     }

@@ -47,6 +47,17 @@ jobs:
           node scripts/test-tutor-ui.mjs
       - name: Android build and unit tests
         run: gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest
+      - name: Offline playback integration test (network disabled)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb shell svc wifi disable
+            adb shell svc data disable
+            gradle --no-daemon :app:connectedDebugAndroidTest
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:

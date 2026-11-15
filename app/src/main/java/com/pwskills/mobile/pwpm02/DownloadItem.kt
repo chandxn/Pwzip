@@ -33,17 +33,29 @@ data class DownloadItem(
     fun toJson(): JSONObject {
         return JSONObject()
             .put("requestId", requestId)
-            .put("sourceUrl", sourceUrl)
+            // Signed URLs and provider query tokens never leave native storage.
             .put("fileName", fileName)
             .put("mimeType", mimeType)
             .put("status", status.name)
             .put("bytesDownloaded", bytesDownloaded)
             .put("totalBytes", totalBytes)
             .put("progress", progress)
-            .put("destinationUri", destinationUri ?: JSONObject.NULL)
-            .put("errorMessage", errorMessage ?: JSONObject.NULL)
+            // The native UI opens by request id; never expose filesystem or MediaStore URIs to JS.
+            .put("hasPlayableFile", status == DownloadStatus.COMPLETED && destinationUri != null)
+            .put("errorMessage", errorMessage?.replace(Regex("https?://\\S+"), "[redacted URL]")
+                ?.replace(Regex("(?i)(?:file:/+|/(?:data|storage|mnt)/)[^\\s,;]+"), "[private path]") ?: JSONObject.NULL)
             .put("createdAt", createdAt)
             .put("updatedAt", updatedAt)
+    }
+
+    fun canTransitionTo(next: DownloadStatus): Boolean = when (status) {
+        DownloadStatus.QUEUED -> next in setOf(DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.UNSUPPORTED)
+        DownloadStatus.DOWNLOADING -> next in setOf(DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED, DownloadStatus.PAUSED, DownloadStatus.VERIFYING, DownloadStatus.FAILED, DownloadStatus.UNSUPPORTED)
+        DownloadStatus.PAUSED -> next in setOf(DownloadStatus.PAUSED, DownloadStatus.QUEUED, DownloadStatus.FAILED)
+        DownloadStatus.VERIFYING -> next in setOf(DownloadStatus.COMPLETED, DownloadStatus.FAILED)
+        DownloadStatus.COMPLETED -> next == DownloadStatus.FAILED
+        DownloadStatus.FAILED -> next in setOf(DownloadStatus.FAILED, DownloadStatus.QUEUED)
+        DownloadStatus.UNSUPPORTED -> next == DownloadStatus.UNSUPPORTED
     }
 
     companion object {
@@ -56,7 +68,7 @@ data class DownloadItem(
             }
             return DownloadItem(
                 requestId = obj.getString("requestId"),
-                sourceUrl = obj.getString("sourceUrl"),
+                sourceUrl = obj.optString("sourceUrl", ""),
                 fileName = obj.getString("fileName"),
                 mimeType = obj.optString("mimeType", "video/mp4"),
                 status = parsedStatus,
