@@ -244,6 +244,21 @@ data class ActiveLessonState(
             }
         }
 
+        /**
+         * A transient empty/unresolved portal sync must not erase a confirmed lesson.
+         * Clear the confirmed lesson only when the portal has actually exposed a
+         * different lesson title. This prevents tab switches/brief DOM gaps from
+         * wiping the canonical state shared with Downloads and AI Tutor.
+         */
+        fun shouldRetainConfirmedStateOnUnresolved(
+            current: ActiveLessonState?,
+            unresolved: PortalSyncResolution.Unresolved
+        ): Boolean {
+            if (current == null) return false
+            val observed = unresolved.observedLessonTitle?.trim().orEmpty()
+            return observed.isEmpty() || observed.equals(current.lessonTitle, ignoreCase = true)
+        }
+
         fun fromPortalJsonOrNull(jsonStr: String?): ActiveLessonState? {
             return when (val res = resolvePortalSync(jsonStr)) {
                 is PortalSyncResolution.Confirmed -> res.state
