@@ -304,7 +304,7 @@
           var bestScore = -1;
           for (var i = 0; i < headings.length; i++) {
             var el = headings[i];
-            if (!el || (el.closest && el.closest("header, nav, [role='navigation'], [class*='navbar'], [class*='streak'], [class*='progress'], [class*='dashboard']"))) continue;
+            if (!el || (el.closest && el.closest("nav, [role='navigation'], [class*='navbar'], [class*='streak'], [class*='progress'], [class*='dashboard']"))) continue;
             var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
             if (rect && (rect.width < 40 || rect.height < 10 || rect.bottom < 0 || rect.top > (window.innerHeight || 900))) continue;
             var candidateTitle = cleanProviderText(
@@ -361,7 +361,7 @@
             if (candidate.children && candidate.children.length > 3) continue;
             if (candidate.closest && candidate.closest("nav, [role='navigation'], [class*='navbar'], [class*='sidebar'], [class*='streak'], [class*='progress'], [class*='dashboard']")) continue;
             var fr = candidate.getBoundingClientRect();
-            if (fr.width < 70 || fr.height < 12 || fr.top < 45 || fr.top > viewportHeight * 0.42) continue;
+            if (fr.width < 55 || fr.height < 10 || fr.top < 4 || fr.top > viewportHeight * 0.42) continue;
             var candidateText = cleanProviderText(
               candidate.getAttribute("data-lesson-title") ||
               candidate.getAttribute("aria-label") ||
