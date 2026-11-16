@@ -69,38 +69,12 @@ jobs:
           disable-spellchecker: true
           script: |
             set -eu
-            # Build instrumentation APK, then ensure Android has fully booted and ADB is responsive.
             gradle --no-daemon :app:assembleDebugAndroidTest
             adb wait-for-device
-            booted=""
-            for attempt in $(seq 1 90); do
-              booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-              [ "$booted" = "1" ] && break
-              sleep 2
-            done
-            if [ "$booted" != "1" ]; then
-              echo "Emulator did not report boot_completed=1"
-              adb logcat -d -t 3000 || true
-              exit 1
-            fi
+            booted="$(adb shell getprop sys.boot_completed | tr -d '\r')"
+            if [ "$booted" != "1" ]; then echo "Emulator boot incomplete: $booted"; adb logcat -d -t 2000 || true; exit 1; fi
             adb shell input keyevent 82 || true
-            # Use non-streaming installs to avoid ADB streaming stalls on hosted emulators.
-            timeout 4m adb install --no-streaming -r app/build/outputs/apk/debug/app-debug.apk || {
-              echo "Main APK install failed; emulator diagnostics:"
-              adb shell getprop || true
-              adb logcat -d -t 3000 || true
-              exit 1
-            }
-            timeout 4m adb install --no-streaming -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk || {
-              echo "Instrumentation APK install failed; emulator diagnostics:"
-              adb shell pm list packages || true
-              adb logcat -d -t 3000 || true
-              exit 1
-            }
+            timeout 4m adb install --no-streaming -r app/build/outputs/apk/debug/app-debug.apk
+            timeout 4m adb install --no-streaming -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell svc wifi disable
-            # Bound instrumentation so a stuck test cannot hold CI indefinitely.
-            timeout 8m adb shell am instrument -w -r com.pwskills.mobile.pwpm02.test/androidx.test.runner.AndroidJUnitRunner || {
-              echo "Offline playback instrumentation failed or timed out; recent emulator log:"
-              adb logcat -d -t 3000 || true
-              exit 1
-            }
+            timeout 8m adb shell am instrument -w -r com.pwskills.mobile.pwpm02.test/androidx.test.runner.AndroidJUnitRunner
