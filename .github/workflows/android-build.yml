@@ -70,8 +70,8 @@ jobs:
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell svc wifi disable
             # Bound instrumentation so a stuck emulator/test cannot hold CI indefinitely.
-            timeout 6m adb shell am instrument -w -r com.pwskills.mobile.pwpm02.test/androidx.test.runner.AndroidJUnitRunner || {
+            if ! timeout 6m adb shell am instrument -w -r com.pwskills.mobile.pwpm02.test/androidx.test.runner.AndroidJUnitRunner; then
               echo "Offline playback instrumentation failed or timed out; recent emulator log:"
               adb logcat -d -t 3000 || true
               exit 1
-            }
+            fi
