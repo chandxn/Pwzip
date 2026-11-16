@@ -345,6 +345,44 @@
         }
       } catch (e) {}
 
+      // 5. Fallback for portal layouts that render the lesson heading as a plain div
+      // (the current PW mobile layout does this instead of h1/h2/h3).
+      // This is title-only metadata: it never creates or guesses a provider lesson ID.
+      try {
+        if (!meta.lessonTitle && document.querySelectorAll) {
+          var nodes = document.querySelectorAll("body *");
+          var fallbackTitle = "";
+          var fallbackScore = -1;
+          var viewportHeight = window.innerHeight || 900;
+          var scanLimit = Math.min(nodes.length, 900);
+          for (var fi = 0; fi < scanLimit; fi++) {
+            var candidate = nodes[fi];
+            if (!candidate || !candidate.getBoundingClientRect || !candidate.textContent) continue;
+            if (candidate.children && candidate.children.length > 3) continue;
+            if (candidate.closest && candidate.closest("nav, [role='navigation'], [class*='navbar'], [class*='sidebar'], [class*='streak'], [class*='progress'], [class*='dashboard']")) continue;
+            var fr = candidate.getBoundingClientRect();
+            if (fr.width < 70 || fr.height < 12 || fr.top < 45 || fr.top > viewportHeight * 0.42) continue;
+            var candidateText = cleanProviderText(
+              candidate.getAttribute("data-lesson-title") ||
+              candidate.getAttribute("aria-label") ||
+              candidate.getAttribute("title") ||
+              candidate.textContent || ""
+            );
+            if (!candidateText || candidateText.length < 4 || candidateText.length > 100) continue;
+            var fcls = String(candidate.className && candidate.className.baseVal !== undefined ? candidate.className.baseVal : candidate.className || "").toLowerCase();
+            var fscore = 10 + Math.max(0, 80 - Math.abs(fr.top - viewportHeight * 0.16));
+            if (candidate.getAttribute("role") === "heading") fscore += 80;
+            if (/title|heading|truncate|font-semibold|font-bold/.test(fcls)) fscore += 35;
+            if (candidate.tagName === "H1" || candidate.tagName === "H2" || candidate.tagName === "H3") fscore += 60;
+            if (fscore > fallbackScore) {
+              fallbackScore = fscore;
+              fallbackTitle = candidateText;
+            }
+          }
+          if (fallbackTitle) meta.lessonTitle = fallbackTitle;
+        }
+      } catch (e) {}
+
       return meta;
     }
 
