@@ -55,7 +55,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Offline playback integration test (network disabled)
-        timeout-minutes: 20
+        timeout-minutes: 35
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -68,11 +68,39 @@ jobs:
           disable-animations: true
           disable-spellchecker: true
           script: |
-            # Build and install both APKs while the emulator still has network access.
-            # The instrumentation test itself runs only after Wi-Fi is disabled.
+            set -eu
+            # Build instrumentation APK, then ensure Android has fully booted and ADB is responsive.
             gradle --no-daemon :app:assembleDebugAndroidTest
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb wait-for-device
+            booted=""
+            for attempt in $(seq 1 90); do
+              booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+              [ "$booted" = "1" ] && break
+              sleep 2
+            done
+            if [ "$booted" != "1" ]; then
+              echo "Emulator did not report boot_completed=1"
+              adb logcat -d -t 3000 || true
+              exit 1
+            fi
+            adb shell input keyevent 82 || true
+            # Use non-streaming installs to avoid ADB streaming stalls on hosted emulators.
+            timeout 4m adb install --no-streaming -r app/build/outputs/apk/debug/app-debug.apk || {
+              echo "Main APK install failed; emulator diagnostics:"
+              adb shell getprop || true
+              adb logcat -d -t 3000 || true
+              exit 1
+            }
+            timeout 4m adb install --no-streaming -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk || {
+              echo "Instrumentation APK install failed; emulator diagnostics:"
+              adb shell pm list packages || true
+              adb logcat -d -t 3000 || true
+              exit 1
+            }
             adb shell svc wifi disable
-            # Bound instrumentation so a stuck emulator/test cannot hold CI indefinitely.
-            timeout 6m adb shell am instrument -w -r com.pwskills.mobile.pwpm02.test/androidx.test.runner.AndroidJUnitRunner || { echo "Offline playback instrumentation failed or timed out; recent emulator log:"; adb logcat -d -t 3000 || true; exit 1; }
+            # Bound instrumentation so a stuck test cannot hold CI indefinitely.
+            timeout 8m adb shell am instrument -w -r com.pwskills.mobile.pwpm02.test/androidx.test.runner.AndroidJUnitRunner || {
+              echo "Offline playback instrumentation failed or timed out; recent emulator log:"
+              adb logcat -d -t 3000 || true
+              exit 1
+            }
