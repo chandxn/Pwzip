@@ -253,7 +253,17 @@ class MainActivity : Activity(), View.OnClickListener {
                 if (resolution.lastUpdatedAt < lastSyncTimestampMs) return
                 lastSyncTimestampMs = resolution.lastUpdatedAt
                 lastSyncSeq = resolution.seq
-                // Clear stale lesson context so previous lessonId is never reused!
+
+                // A blank/transient unresolved event is common while the portal SPA
+                // changes tabs or briefly rerenders. Do not let it erase a confirmed
+                // lesson that is already shared with Downloads and AI Tutor.
+                if (ActiveLessonState.shouldRetainConfirmedStateOnUnresolved(canonicalLessonState, resolution)) {
+                    pushSessionToChildViews()
+                    return
+                }
+
+                // A different observed title means the learner navigated to another
+                // lesson whose provider ID is not yet confirmed: clear stale context.
                 canonicalLessonState = null
                 latestSessionJson = resolution.toJson().toString()
                 getSharedPreferences("pw_pm_v21_session", MODE_PRIVATE)
