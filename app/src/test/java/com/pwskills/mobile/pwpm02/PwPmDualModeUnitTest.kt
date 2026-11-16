@@ -48,6 +48,44 @@ class PwPmDualModeUnitTest {
     }
 
     @Test
+    fun transientUnresolvedSyncDoesNotEraseConfirmedLessonAcrossTabs() {
+        val confirmed = ActiveLessonState(
+            seq = 27L,
+            lessonId = "6933edb9a6eb64f1e8c660e7",
+            lessonTitle = "Lecture: Types of Apps (Web, Mobile, Desktop)",
+            courseId = "course-993714",
+            courseTitle = "",
+            moduleId = "",
+            moduleTitle = "",
+            source = "HTMLMediaElement.loadedmetadata",
+            lastUpdatedAt = 1763300000000L
+        )
+        val emptyTransient = PortalSyncResolution.Unresolved(
+            seq = 28L,
+            lastUpdatedAt = 1763300001000L,
+            reason = "LESSON_TITLE_UNRESOLVED",
+            observedLessonTitle = null
+        )
+        val sameLessonTransient = PortalSyncResolution.Unresolved(
+            seq = 29L,
+            lastUpdatedAt = 1763300002000L,
+            reason = "LESSON_ID_UNRESOLVED",
+            observedLessonTitle = confirmed.lessonTitle
+        )
+        val differentLesson = PortalSyncResolution.Unresolved(
+            seq = 30L,
+            lastUpdatedAt = 1763300003000L,
+            reason = "LESSON_ID_UNRESOLVED",
+            observedLessonTitle = "Introduction to Databases"
+        )
+
+        assertTrue(ActiveLessonState.shouldRetainConfirmedStateOnUnresolved(confirmed, emptyTransient))
+        assertTrue(ActiveLessonState.shouldRetainConfirmedStateOnUnresolved(confirmed, sameLessonTransient))
+        assertFalse(ActiveLessonState.shouldRetainConfirmedStateOnUnresolved(confirmed, differentLesson))
+        assertFalse(ActiveLessonState.shouldRetainConfirmedStateOnUnresolved(null, emptyTransient))
+    }
+
+    @Test
     fun testConfirmedLessonAndHttpsWithoutExplicitEntitlementBlocked() {
         val confirmedJson = """
             {
