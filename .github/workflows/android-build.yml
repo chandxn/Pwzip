@@ -72,8 +72,12 @@ jobs:
             gradle --no-daemon :app:assembleDebugAndroidTest
             # The emulator action has completed its boot wait; recover transient offline ADB state.
             adb reconnect offline || true
-            sleep 20
             adb wait-for-device
+            # ADB transport can be online before Android's package/input services finish booting.
+            sleep 60
+            adb shell getprop sys.boot_completed
+            adb shell service check package
+            adb shell service check activity
             adb shell input keyevent 82 || true
             timeout 4m adb install --no-streaming -r app/build/outputs/apk/debug/app-debug.apk
             timeout 4m adb install --no-streaming -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
