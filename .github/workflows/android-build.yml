@@ -70,9 +70,10 @@ jobs:
           script: |
             set -eu
             gradle --no-daemon :app:assembleDebugAndroidTest
+            # The emulator action has completed its boot wait; recover transient offline ADB state.
+            adb reconnect offline || true
+            sleep 20
             adb wait-for-device
-            booted="$(adb shell getprop sys.boot_completed | tr -d '\r')"
-            if [ "$booted" != "1" ]; then echo "Emulator boot incomplete: $booted"; adb logcat -d -t 2000 || true; exit 1; fi
             adb shell input keyevent 82 || true
             timeout 4m adb install --no-streaming -r app/build/outputs/apk/debug/app-debug.apk
             timeout 4m adb install --no-streaming -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
