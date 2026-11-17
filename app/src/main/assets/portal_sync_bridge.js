@@ -163,6 +163,34 @@
       return { video: bestVideo, index: bestIdx, total: list.length };
     }
 
+    // Read only a visible player clock rendered in the same DOM subtree as the media element.
+    // Some portal skins render the authoritative clock outside the HTMLMediaElement.
+    function readVisiblePlayerClock(video) {
+      if (!video) return null;
+      var root = video;
+      for (var depth = 0; depth < 6 && root.parentElement; depth++) {
+        root = root.parentElement;
+        var candidates = root.querySelectorAll ? root.querySelectorAll("span,div,button,[aria-label],[class*='time'],[class*='progress']") : [];
+        var best = null;
+        for (var i = 0; i < candidates.length; i++) {
+          var el = candidates[i];
+          if (!el || !el.getBoundingClientRect) continue;
+          var rect = el.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0 || rect.bottom < 0 || rect.top > (window.innerHeight || 900)) continue;
+          var text = String(el.getAttribute("aria-label") || el.textContent || "").replace(/\\s+/g, " ").trim();
+          var match = text.match(/^(\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*\\/\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)$/);
+          if (!match) continue;
+          var current = parseTimeText(match[1]);
+          var duration = parseTimeText(match[2]);
+          if (current < 0 || duration <= 0 || current > duration + 2) continue;
+          best = { currentPosition: current, duration: duration, source: "visible-player-clock" };
+          break;
+        }
+        if (best) return best;
+      }
+      return null;
+    }
+
     /**
      * Stateless metadata extraction from current portal page ONLY.
      * Never falls back to `trackedContext` for `lessonId` or `lessonTitle`!
@@ -539,10 +567,17 @@
       var v = sel.video;
       var pos = 0;
       var dur = 0;
+      var clockSource = "";
       if (v) {
         pos = Math.max(0, Number(v.currentTime) || 0);
-        if (isFinite(v.duration) && Number(v.duration) > 0) {
-          dur = Number(v.duration);
+        if (isFinite(v.duration) && Number(v.duration) > 0) dur = Number(v.duration);
+        if (pos <= 0 || dur <= 0) {
+          var visibleClock = readVisiblePlayerClock(v);
+          if (visibleClock) {
+            if (pos <= 0) pos = visibleClock.currentPosition;
+            if (dur <= 0) dur = visibleClock.duration;
+            clockSource = visibleClock.source;
+          }
         }
       }
       trackedContext.lastPosition = pos;
@@ -590,6 +625,7 @@
         identitySource: meta.identitySource,
         currentPosition: pos,
         duration: dur,
+        playbackClockSource: clockSource || (v ? "HTMLMediaElement" : "unavailable"),
         formattedPosition: formatTimeHms(pos),
         formattedDuration: dur > 0 ? formatTimeHms(dur) : "Not exposed by provider",
         playbackState: pState,
@@ -651,8 +687,11 @@
           if (evName === "encrypted") {
             t.__pwEncrypted = true;
           }
-          if (evName === "play" || evName === "playing" || (!t.paused && !t.loop)) {
-            lastInteractedVideo = t;
+          // Remember the actual media element that emitted the event, including pause/seek
+          // events; otherwise a different hidden/thumbnail video can win the selector.
+          if (!t.loop && t.isConnected !== false) {
+            var eventRect = t.getBoundingClientRect ? t.getBoundingClientRect() : null;
+            if (!eventRect || (eventRect.width >= 120 && eventRect.height >= 70)) lastInteractedVideo = t;
           }
           var mappedEvent = (evName === "loadedmetadata" || evName === "durationchange")
             ? "LESSON_CHANGED"
