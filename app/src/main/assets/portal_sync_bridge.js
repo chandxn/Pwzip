@@ -178,7 +178,7 @@
           var rect = el.getBoundingClientRect();
           if (rect.width <= 0 || rect.height <= 0 || rect.bottom < 0 || rect.top > (window.innerHeight || 900)) continue;
           var text = String(el.getAttribute("aria-label") || el.textContent || "").replace(/\\s+/g, " ").trim();
-          var match = text.match(/^(\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*\\/\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)$/);
+          var match = text.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*\/\s*(\d{1,2}:\d{2}(?::\d{2})?)$/);
           if (!match) continue;
           var current = parseTimeText(match[1]);
           var duration = parseTimeText(match[2]);
