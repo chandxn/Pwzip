@@ -496,12 +496,24 @@ function saveTimestampedNote() {
   try {
     const raw = localStorage.getItem(getNotesKey());
     const list = raw ? JSON.parse(raw) : [];
+    const noteTime = fmtTime(aiLessonState.currentPosition);
+    const now = Date.now();
+    const duplicate = list.some(n =>
+      n && n.lessonId === aiLessonState.lessonId &&
+      n.time === noteTime &&
+      String(n.text || "").trim().toLowerCase() === q.toLowerCase() &&
+      now - Number(n.savedAt || 0) < 10000
+    );
+    if (duplicate) {
+      $("questionAnswerBox").textContent = "This note was already saved at " + noteTime + ".";
+      return;
+    }
     list.unshift({
       lessonId: aiLessonState.lessonId,
       lessonTitle: aiLessonState.lessonTitle,
-      time: fmtTime(aiLessonState.currentPosition),
+      time: noteTime,
       text: q,
-      savedAt: Date.now()
+      savedAt: now
     });
     localStorage.setItem(getNotesKey(), JSON.stringify(list));
     $("learnerQuestionInput").value = "";
