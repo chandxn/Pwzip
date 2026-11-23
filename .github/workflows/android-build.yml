@@ -40,7 +40,9 @@ jobs:
 
       - name: Extract yooo.zip and Restore Official Gradle 8.6 Wrapper & Checksum
         run: |
-          unzip -o "yooo (2) (1).zip"
+          ZIP_FILE=$(ls -t *.zip | head -n 1)
+          echo "Extracting: $ZIP_FILE"
+          unzip -o "$ZIP_FILE"
           test -d PW_PM_FINAL_ANDROID_PROJECT
           cd PW_PM_FINAL_ANDROID_PROJECT
           cat << 'PROPS' > gradle/wrapper/gradle-wrapper.properties
