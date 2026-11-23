@@ -19,8 +19,19 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK (API 34)
-        uses: android-actions/setup-android@v3
+      - name: Ensure Android SDK 34 & Build Tools
+        run: |
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
+          SDKMANAGER="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+          if [ -x "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          else
+            echo "Using preinstalled Android SDK at $SDK_DIR"
+            ls -la "$SDK_DIR/platforms" || true
+          fi
 
       - name: Setup Gradle 8.6
         uses: gradle/actions/setup-gradle@v3
