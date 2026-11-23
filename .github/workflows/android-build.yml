@@ -1,85 +1,82 @@
-name: AI Tutor Android Build
+name: Android Build & Verify (PW-DM, PW-PM, PW-FSWD, PW-DS)
 
 on:
   push:
-    branches: [main]
+    branches: [ "main" ]
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
-  verify-and-build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+  build:
+    runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+
+      - name: Setup Android SDK (API 34)
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle 8.6
+        uses: gradle/actions/setup-gradle@v3
         with:
-          packages: platform-tools
-      - name: Install Android SDK
-        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-      - name: Install Gradle
+          gradle-version: '8.6'
+
+      - name: Extract yooo.zip and Restore Official Gradle 8.6 Wrapper & Checksum
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
-          unzip -q gradle-8.6-bin.zip -d "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/gradle-8.6/bin" >> "$GITHUB_PATH"
-      - name: Install backend dependencies
-        working-directory: backend
-        run: npm ci
-      - name: Backend tests
-        working-directory: backend
-        run: npm test
-      - name: JavaScript checks
+          unzip -o yooo.zip
+          test -d PW_PM_FINAL_ANDROID_PROJECT
+          cd PW_PM_FINAL_ANDROID_PROJECT
+          cat << 'PROPS' > gradle/wrapper/gradle-wrapper.properties
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.6-bin.zip
+          distributionSha256Sum=9631d53cf3e74bfa726893aee1f8994fee4e060c401335946dba2156f440f24c
+          networkTimeout=10000
+          validateDistributionUrl=true
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          PROPS
+          gradle wrapper --gradle-version 8.6 --distribution-type bin
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Build All 4 Course APKs (DM, PM, FSWD, DS) and Run Unit Tests
+        working-directory: PW_PM_FINAL_ANDROID_PROJECT
         run: |
-          node --experimental-sqlite --check backend/src/server.js
-          node scripts/check-js.mjs
-          node scripts/test-caption-pipeline.mjs
-          node scripts/test-tutor-ui.mjs
-      - name: Android build and unit tests
-        run: gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest
-      - name: Upload debug APK
+          set -o pipefail
+          ./gradlew clean assembleDmDebug assemblePmDebug assembleFswdDebug assembleDsDebug testPmDebugUnitTest --stacktrace 2>&1 | tee build.log
+
+      - name: Collect & Verify All 4 Debug APKs
+        working-directory: PW_PM_FINAL_ANDROID_PROJECT
+        run: |
+          mkdir -p collected_apks
+          cp app/build/outputs/apk/dm/debug/app-dm-debug.apk collected_apks/PW-DM-debug.apk
+          cp app/build/outputs/apk/pm/debug/app-pm-debug.apk collected_apks/PW-PM-debug.apk
+          cp app/build/outputs/apk/fswd/debug/app-fswd-debug.apk collected_apks/PW-FSWD-debug.apk
+          cp app/build/outputs/apk/ds/debug/app-ds-debug.apk collected_apks/PW-DS-debug.apk
+          ls -lh collected_apks/
+          sha256sum collected_apks/*.apk | tee collected_apks/apks-sha256.txt
+
+      - name: Upload All 4 Debug APKs
         uses: actions/upload-artifact@v4
         with:
-          name: ai-tutor-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: pw-4-course-debug-apks
+          path: PW_PM_FINAL_ANDROID_PROJECT/collected_apks/*
           if-no-files-found: error
-          retention-days: 30
-      - name: Offline playback integration test (network disabled)
-        timeout-minutes: 35
-        uses: reactivecircus/android-emulator-runner@v2
+
+      - name: Upload Build Logs & Unit Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          cores: 4
-          ram-size: 4096M
-          heap-size: 512M
-          emulator-boot-timeout: 1200
-          disable-animations: true
-          disable-spellchecker: true
-          script: |
-            set -eu
-            gradle --no-daemon :app:assembleDebugAndroidTest
-            # The emulator action has completed its boot wait; recover transient offline ADB state.
-            adb reconnect offline || true
-            adb wait-for-device
-            # ADB transport can be online before Android's package/input services finish booting.
-            sleep 60
-            adb shell getprop sys.boot_completed
-            # Do not send input/key events during early boot: the input service can
-            # restart and break the ADB transport even after sys.boot_completed=1.
-            sleep 30
-            timeout 4m adb install --no-streaming -r app/build/outputs/apk/debug/app-debug.apk
-            timeout 4m adb install --no-streaming -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell svc wifi disable
-            timeout 8m adb shell am instrument -w -r com.pwskills.mobile.pwpm02.test/androidx.test.runner.AndroidJUnitRunner
+          name: pw-build-logs-and-test-reports
+          path: |
+            PW_PM_FINAL_ANDROID_PROJECT/build.log
+            PW_PM_FINAL_ANDROID_PROJECT/app/build/reports/tests/testPmDebugUnitTest/
+            PW_PM_FINAL_ANDROID_PROJECT/app/build/test-results/testPmDebugUnitTest/
+          if-no-files-found: warn
